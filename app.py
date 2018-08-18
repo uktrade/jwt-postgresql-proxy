@@ -98,7 +98,7 @@ def postgres_message_parser(num_startup_messages):
 
 def postgress_message_interceptor():
     ''' Keeps a track of the passed messages, in order to transform them.
-    For example, to intercep password request/responses
+    For example, to intercept password request/responses
     '''
 
     def log_messages(logging_title, messages):
