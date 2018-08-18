@@ -52,10 +52,11 @@ def postgres_message_reader(startup_messages):
 
         return has_message_bytes, message_type_bytes, message_length_bytes, message_bytes
 
-    def log_messages(incoming_buf):
+    def get_messages(incoming_buf):
         nonlocal messages_popped
         remaining.extend(incoming_buf)
 
+        messages = []
         while True:
             pop_startup_message = messages_popped < startup_messages
 
@@ -66,18 +67,29 @@ def postgres_message_reader(startup_messages):
             if not has_popped:
                 break
 
-            print(str(startup_messages) + ' -----------------')
-            print(message_type_bytes)
-            print(message_bytes)
-
             messages_popped += 1
+            messages.append([message_type_bytes, message_length_bytes, message_bytes])
+
+        return messages
 
     async def _read(reader):
-        buf = await reader.read(MAX_READ)
-        log_messages(buf)
-        return buf
+        # We only return messages that we have logged, to prevent an attacker from constructing
+        # messages that somehow fail our own parsing, but would pass Postgres'
+        data = await reader.read(MAX_READ)
+        messages = get_messages(data)
+        if messages:
+            print(str(startup_messages) + ' -----------------')
+            print(messages)
+        return b''.join(flatten(messages))
 
     return _read
+
+def flatten(list_to_flatten):
+    return (
+        item
+        for sublist in list_to_flatten
+        for item in sublist
+    )
 
 async def main():
     async def handle_client(client_reader, client_writer):
