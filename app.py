@@ -15,13 +15,16 @@ MESSAGE_LENGTH_FORMAT = '!L'
 NO_DATA_TYPE = b'N'
 
 
-def postgres_message_reader(logging_title, startup_messages):
-    remaining = bytearray()
+def postgres_message_logger(logging_title, startup_messages):
+    data_buffer = bytearray()
     messages_popped = 0
+
+    def push_onto_buffer(incoming_data_buffer):
+        data_buffer.extend(incoming_data_buffer)
 
     def attempt_pop_message(message_type_length):
         message_type_slice = slice(0, message_type_length)
-        message_type_bytes = remaining[message_type_slice]
+        message_type_bytes = data_buffer[message_type_slice]
         has_message_type_bytes = len(message_type_bytes) == message_type_length
 
         # The documentation is a bit wrong: the 'N' message type for no data, is _not_ followed
@@ -31,7 +34,7 @@ def postgres_message_reader(logging_title, startup_messages):
             MESSAGE_LENGTH_LENGTH
 
         message_length_slice = slice(message_type_length, message_type_length + message_length_length)
-        message_length_bytes = remaining[message_length_slice]
+        message_length_bytes = data_buffer[message_length_slice]
         has_message_length_bytes = has_message_type_bytes and len(message_length_bytes) == message_length_length
 
         # The protocol specifies that the message length specified _includes_ MESSAGE_LENGTH_LENGTH,
@@ -41,20 +44,19 @@ def postgres_message_reader(logging_title, startup_messages):
             0
 
         message_slice = slice(message_type_length + MESSAGE_LENGTH_LENGTH, message_type_length + MESSAGE_LENGTH_LENGTH + message_length)
-        message_bytes = remaining[message_slice]
+        message_bytes = data_buffer[message_slice]
         has_message_bytes = has_message_length_bytes and len(message_bytes) == message_length
 
         to_remove = \
             slice(0, message_type_length + MESSAGE_LENGTH_LENGTH + message_length) if has_message_bytes else \
             slice(0, 0)
 
-        remaining[to_remove] = bytearray()
+        data_buffer[to_remove] = bytearray()
 
         return has_message_bytes, message_type_bytes, message_length_bytes, message_bytes
 
-    def get_messages(incoming_buf):
+    def pop_messages_from_buffer():
         nonlocal messages_popped
-        remaining.extend(incoming_buf)
 
         messages = []
         while True:
@@ -76,7 +78,8 @@ def postgres_message_reader(logging_title, startup_messages):
         # We only return messages that we have logged, to prevent an attacker from constructing
         # messages that somehow fail our own parsing, but would pass Postgres'
         data = await reader.read(MAX_READ)
-        messages = get_messages(data)
+        push_onto_buffer(data)
+        messages = pop_messages_from_buffer()
         for message in messages:
             print(str(logging_title) + ' -----------------')
             print(message)
@@ -105,7 +108,7 @@ async def main():
             client_writer.close()
 
     async def pipe_logged(reader, writer, logging_title, startup_messages):
-        message_reader = postgres_message_reader(logging_title, startup_messages)
+        message_reader = postgres_message_logger(logging_title, startup_messages)
 
         try:
             while not reader.at_eof():
