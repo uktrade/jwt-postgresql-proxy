@@ -15,7 +15,7 @@ PAYLOAD_LENGTH_FORMAT = '!L'
 NO_DATA_TYPE = b'N'
 
 
-def postgres_message_logger(logging_title, startup_messages):
+def postgres_message_parser(startup_messages):
     data_buffer = bytearray()
     messages_popped = 0
 
@@ -97,29 +97,31 @@ def postgres_message_logger(logging_title, startup_messages):
 
         return messages
 
-    async def log_and_return_messages(reader):
-        # We only return messages that we have logged, to prevent an attacker from constructing
-        # messages that somehow fail our own parsing, but would pass Postgres'
+    async def extract_messages(reader):
         data = await reader.read(MAX_READ)
         push_onto_buffer(data)
-        messages = pop_messages_from_buffer()
-        for message in messages:
-            print(str(logging_title) + ' -----------------')
-            print(message)
-        return b''.join(flatten(messages))
+        return pop_messages_from_buffer()
 
-    return log_and_return_messages
+    return extract_messages
 
 
 def postgress_message_interceptor():
     ''' Keeps a track of the passed messages, in order to transform them.
-    For example, to intercep password request/responses '''
+    For example, to intercep password request/responses
+    '''
 
-    def client_to_server(message):
-        return message
+    def log_messages(logging_title, messages):
+        for message in messages:
+            print(str(logging_title) + ' -----------------')
+            print(message)
 
-    def server_to_client(message):
-        return message
+    def client_to_server(messages):
+        log_messages('client', messages)
+        return messages
+
+    def server_to_client(messages):
+        log_messages('server', messages)
+        return messages
 
     return client_to_server, server_to_client
 
@@ -141,21 +143,21 @@ async def main():
             await asyncio.gather(
                 # The documentation suggests there is one startup packets sent from
                 # the client, but there are actually two
-                pipe_logged(client_reader, server_writer, client_to_server_interceptor,
-                            logging_title='client', startup_messages=2),
-                pipe_logged(server_reader, client_writer, server_to_client_interceptor,
-                            logging_title='server', startup_messages=0),
+                pipe_intercepted(client_reader, server_writer, client_to_server_interceptor,
+                                 startup_messages=2),
+                pipe_intercepted(server_reader, client_writer, server_to_client_interceptor,
+                                 startup_messages=0),
             )
         finally:
             client_writer.close()
             server_writer.close()
 
-    async def pipe_logged(reader, writer, interceptor, logging_title, startup_messages):
-        message_reader = postgres_message_logger(logging_title, startup_messages)
+    async def pipe_intercepted(reader, writer, interceptor, startup_messages):
+        message_parser = postgres_message_parser(startup_messages)
         while not reader.at_eof():
-            messages = await message_reader(reader)
+            messages = await message_parser(reader)
             intercepted_messages = interceptor(messages)
-            writer.write(intercepted_messages)
+            writer.write(b''.join(flatten(intercepted_messages)))
 
     server = await asyncio.start_server(handle_client, '0.0.0.0', 7777)
 
