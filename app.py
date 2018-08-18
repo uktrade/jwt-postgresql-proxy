@@ -97,8 +97,7 @@ def postgres_message_parser(num_startup_messages):
 
         return messages
 
-    async def extract_messages(reader):
-        data = await reader.read(MAX_READ)
+    async def extract_messages(data):
         push_onto_buffer(data)
         return pop_messages_from_buffer()
 
@@ -155,7 +154,8 @@ async def main():
     async def pipe_intercepted(reader, writer, interceptor, num_startup_messages):
         message_parser = postgres_message_parser(num_startup_messages)
         while not reader.at_eof():
-            messages = await message_parser(reader)
+            data = await reader.read(MAX_READ)
+            messages = await message_parser(data)
             intercepted_messages = interceptor(messages)
             writer.write(b''.join(flatten(intercepted_messages)))
 
