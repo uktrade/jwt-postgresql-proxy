@@ -129,15 +129,12 @@ async def main():
             )
         finally:
             client_writer.close()
+            server_writer.close()
 
     async def pipe_logged(reader, writer, logging_title, startup_messages):
         message_reader = postgres_message_logger(logging_title, startup_messages)
-
-        try:
-            while not reader.at_eof():
-                writer.write(await message_reader(reader))
-        finally:
-            writer.close()
+        while not reader.at_eof():
+            writer.write(await message_reader(reader))
 
     server = await asyncio.start_server(handle_client, '0.0.0.0', 7777)
 
