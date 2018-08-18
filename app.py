@@ -77,7 +77,7 @@ def postgres_message_logger(logging_title, startup_messages):
 
         This can be safely called if the internal buffer ends in a partly populated
         message. This message will be returned on a later call, once the full data
-        has been pused by push_onto_buffer
+        has been pushed by push_onto_buffer
         '''
         nonlocal messages_popped
 
