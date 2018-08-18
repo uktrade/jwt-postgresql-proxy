@@ -9,8 +9,8 @@ START_MESSAGE_TYPE_LENGTH = 0
 LATER_MESSAGE_TYPE_LENGTH = 1
 
 # The length of messages itself takes 4 bytes
-MESSAGE_LENGTH_LENGTH = 4
-MESSAGE_LENGTH_FORMAT = '!L'
+PAYLOAD_LENGTH_LENGTH = 4
+PAYLOAD_LENGTH_FORMAT = '!L'
 
 NO_DATA_TYPE = b'N'
 
@@ -22,43 +22,43 @@ def postgres_message_logger(logging_title, startup_messages):
     def push_onto_buffer(incoming_data_buffer):
         data_buffer.extend(incoming_data_buffer)
 
-    def attempt_pop_message(message_type_length):
+    def attempt_pop_message(type_length):
         ''' Returns the next, possibly partly-received, message in data_buffer
 
         If the message is complete, then it's removed from the data buffer, and
         the return tuple's first component is True.
         '''
-        message_type_slice = slice(0, message_type_length)
-        message_type_bytes = data_buffer[message_type_slice]
-        has_message_type_bytes = len(message_type_bytes) == message_type_length
+        type_slice = slice(0, type_length)
+        type_bytes = data_buffer[type_slice]
+        has_type_bytes = len(type_bytes) == type_length
 
-        # The documentation is a bit wrong: the 'N' message type for no data, is _not_ followed
+        # The documentation is a bit wrong: the 'N' type for no data, is _not_ followed
         # by a length
-        message_length_length = \
-            0 if has_message_type_bytes and message_type_bytes == NO_DATA_TYPE else \
-            MESSAGE_LENGTH_LENGTH
+        payload_length_length = \
+            0 if has_type_bytes and type_bytes == NO_DATA_TYPE else \
+            PAYLOAD_LENGTH_LENGTH
 
-        message_length_slice = slice(message_type_length, message_type_length + message_length_length)
-        message_length_bytes = data_buffer[message_length_slice]
-        has_message_length_bytes = has_message_type_bytes and len(message_length_bytes) == message_length_length
+        payload_length_slice = slice(type_length, type_length + payload_length_length)
+        payload_length_bytes = data_buffer[payload_length_slice]
+        has_payload_length_bytes = has_type_bytes and len(payload_length_bytes) == payload_length_length
 
         # The protocol specifies that the message length specified _includes_ MESSAGE_LENGTH_LENGTH,
         # so we subtract to get the actual length of the message.
-        message_length = \
-            (struct.unpack(MESSAGE_LENGTH_FORMAT, message_length_bytes)[0] - MESSAGE_LENGTH_LENGTH) if has_message_length_bytes and message_length_bytes else \
+        payload_length = \
+            (struct.unpack(PAYLOAD_LENGTH_FORMAT, payload_length_bytes)[0] - PAYLOAD_LENGTH_LENGTH) if has_payload_length_bytes and payload_length_bytes else \
             0
 
-        message_slice = slice(message_type_length + MESSAGE_LENGTH_LENGTH, message_type_length + MESSAGE_LENGTH_LENGTH + message_length)
-        message_bytes = data_buffer[message_slice]
-        has_message_bytes = has_message_length_bytes and len(message_bytes) == message_length
+        payload_slice = slice(type_length + PAYLOAD_LENGTH_LENGTH, type_length + PAYLOAD_LENGTH_LENGTH + payload_length)
+        payload_bytes = data_buffer[payload_slice]
+        has_payload_bytes = has_payload_length_bytes and len(payload_bytes) == payload_length
 
         to_remove = \
-            slice(0, message_type_length + MESSAGE_LENGTH_LENGTH + message_length) if has_message_bytes else \
+            slice(0, type_length + PAYLOAD_LENGTH_LENGTH + payload_length) if has_payload_bytes else \
             slice(0, 0)
 
         data_buffer[to_remove] = bytearray()
 
-        return has_message_bytes, message_type_bytes, message_length_bytes, message_bytes
+        return has_payload_bytes, type_bytes, payload_length_bytes, payload_bytes
 
     def pop_messages_from_buffer():
         ''' Returns a list of triples, each triple being the raw bytes of 
@@ -68,8 +68,8 @@ def postgres_message_logger(logging_title, startup_messages):
         The components of the triple:
 
           type of the message,
-          the length of the messages,
-          the message payload itself,
+          the length of the payload,
+          the payload itself,
 
         Each component is optional, and will be the empty byte if its not present
         The triples are so constructed so that full original bytes can be retrieved
@@ -85,7 +85,7 @@ def postgres_message_logger(logging_title, startup_messages):
         while True:
             pop_startup_message = messages_popped < startup_messages
 
-            has_popped, message_type_bytes, message_length_bytes, message_bytes = \
+            has_popped, type_bytes, payload_length_bytes, payload_bytes = \
                 attempt_pop_message(START_MESSAGE_TYPE_LENGTH) if pop_startup_message else \
                 attempt_pop_message(LATER_MESSAGE_TYPE_LENGTH)
 
@@ -93,7 +93,7 @@ def postgres_message_logger(logging_title, startup_messages):
                 break
 
             messages_popped += 1
-            messages.append([message_type_bytes, message_length_bytes, message_bytes])
+            messages.append([type_bytes, payload_length_bytes, payload_bytes])
 
         return messages
 
