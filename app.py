@@ -78,7 +78,6 @@ def postgres_message_parser(num_startup_messages):
         push_data(data)
 
         nonlocal messages_popped
-        messages = []
 
         while True:
             pop_startup_message = messages_popped < num_startup_messages
@@ -91,9 +90,7 @@ def postgres_message_parser(num_startup_messages):
                 break
 
             messages_popped += 1
-            messages.append([type_bytes, payload_length_bytes, payload_bytes])
-
-        return messages
+            yield [type_bytes, payload_length_bytes, payload_bytes]
 
     return extract_messages
 
@@ -107,14 +104,13 @@ def postgress_message_interceptor():
         for message in messages:
             print(str(logging_title) + ' -----------------')
             print(message)
+            yield message
 
     def client_to_server(messages):
-        log_messages('client', messages)
-        return messages
+        return log_messages('client', messages)
 
     def server_to_client(messages):
-        log_messages('server', messages)
-        return messages
+        return log_messages('server', messages)
 
     return client_to_server, server_to_client
 
