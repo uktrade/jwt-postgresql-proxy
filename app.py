@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import struct
 
 # How much we read at once. Messages _can_ be larger than this
@@ -14,6 +15,7 @@ PAYLOAD_LENGTH_FORMAT = '!L'
 
 NO_DATA_TYPE = b'N'
 
+Message = collections.namedtuple('Message', ('type', 'payload_length', 'payload'))
 
 def postgres_message_parser(num_startup_messages):
     data_buffer = bytearray()
@@ -58,10 +60,10 @@ def postgres_message_parser(num_startup_messages):
 
         data_buffer[to_remove] = bytearray()
 
-        return has_payload_bytes, bytes(type_bytes), bytes(payload_length_bytes), bytes(payload_bytes)
+        return has_payload_bytes, Message(bytes(type_bytes), bytes(payload_length_bytes), bytes(payload_bytes))
 
     def extract_messages(data):
-        ''' Yields a generator of triples, each triple being the raw bytes of 
+        ''' Yields a generator of Messages, each Message being the raw bytes of
         components of Postgres messages passed in data, or combined with that of
         previous calls where the data passed ended with an incomplete message
 
@@ -72,7 +74,7 @@ def postgres_message_parser(num_startup_messages):
           the payload itself,
 
         Each component is optional, and will be the empty byte if its not present
-        The triples are so constructed so that full original bytes can be retrieved
+        Each Message is so constructed so that full original bytes can be retrieved
         by just concatanating them together, to make proxying easier
         '''
         push_data(data)
@@ -85,13 +87,13 @@ def postgres_message_parser(num_startup_messages):
             type_length = \
                 START_MESSAGE_TYPE_LENGTH if pop_startup_message else \
                 LATER_MESSAGE_TYPE_LENGTH
-            has_popped, type_bytes, payload_length_bytes, payload_bytes = attempt_pop_message(type_length)
+            has_popped, message = attempt_pop_message(type_length)
 
             if not has_popped:
                 break
 
             messages_popped += 1
-            yield type_bytes, payload_length_bytes, payload_bytes
+            yield message
 
     return extract_messages
 
