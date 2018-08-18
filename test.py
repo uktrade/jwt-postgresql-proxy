@@ -2,7 +2,7 @@ import asyncio
 import aiopg
 
 async def main():
-    dsn = 'dbname=test user=postgres password=mysecret host=127.0.0.1 port=7777'
+    dsn = 'dbname=test user=postgres password=proxy_mysecret host=127.0.0.1 port=7777'
 
     pool = await aiopg.create_pool(dsn)
     async with pool.acquire() as conn:

@@ -1,5 +1,7 @@
 import asyncio
 import collections
+import hashlib
+import secrets
 import struct
 
 # How much we read at once. Messages _can_ be larger than this
@@ -103,17 +105,53 @@ def postgress_message_interceptor():
     For example, to intercept password request/responses
     '''
 
+    # Experimental replacement of the password
+    correct_client_password = b'proxy_mysecret'
+    correct_server_password = b'mysecret'
+
+    # This would have to be read from the messages?
+    username = b'postgres'
+
+    salt = None
+
+    def md5(data):
+        return hashlib.md5(data).hexdigest().encode('utf-8')
+
+    def md5_salted(password, username, salf):
+        return md5(md5(password + username) + salt)
+
     def log_messages(logging_title, messages):
         for message in messages:
             print(str(logging_title) + ' -----------------')
             print(message)
             yield message
 
+    def md5_incorrect():
+        return md5(secrets.token_bytes(32))
+
     def client_to_server(messages):
-        return log_messages('client', messages)
+        for message in log_messages('client', messages):
+            is_md5_response = message.type == b'p' and message.payload[0:3] == b'md5'
+            if is_md5_response:
+                client_md5 = message.payload[3:-1]
+                correct_client_md5 = md5_salted(correct_client_password, username, salt)
+                correct_server_md5 = md5_salted(correct_server_password, username, salt)
+
+                server_md5 = \
+                    correct_server_md5 if client_md5 == correct_client_md5 else \
+                    md5_incorrect()
+                message = message._replace(payload=b'md5' + server_md5 + b'\x00')
+            
+            yield message
 
     def server_to_client(messages):
-        return log_messages('server', messages)
+        nonlocal salt
+
+        for message in log_messages('server', messages):
+            is_md5_request = message.type == b'R' and message.payload[0:4] == b'\x00\x00\x00\x05'
+            if is_md5_request:
+                salt = message.payload[4:8]
+            yield message
 
     return client_to_server, server_to_client
 
