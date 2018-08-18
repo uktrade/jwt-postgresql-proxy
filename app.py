@@ -82,9 +82,10 @@ def postgres_message_parser(num_startup_messages):
         while True:
             pop_startup_message = messages_popped < num_startup_messages
 
-            has_popped, type_bytes, payload_length_bytes, payload_bytes = \
-                attempt_pop_message(START_MESSAGE_TYPE_LENGTH) if pop_startup_message else \
-                attempt_pop_message(LATER_MESSAGE_TYPE_LENGTH)
+            type_length = \
+                START_MESSAGE_TYPE_LENGTH if pop_startup_message else \
+                LATER_MESSAGE_TYPE_LENGTH
+            has_popped, type_bytes, payload_length_bytes, payload_bytes = attempt_pop_message(type_length)
 
             if not has_popped:
                 break
