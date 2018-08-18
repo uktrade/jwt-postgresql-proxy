@@ -110,6 +110,20 @@ def postgres_message_logger(logging_title, startup_messages):
 
     return log_and_return_messages
 
+
+def postgress_message_interceptor():
+    ''' Keeps a track of the passed messages, in order to transform them.
+    For example, to intercep password request/responses '''
+
+    def client_to_server(message):
+        return message
+
+    def server_to_client(message):
+        return message
+
+    return client_to_server, server_to_client
+
+
 def flatten(list_to_flatten):
     return (
         item
@@ -121,20 +135,27 @@ async def main():
     async def handle_client(client_reader, client_writer):
         try:
             server_reader, server_writer = await asyncio.open_connection('127.0.0.1', 5432)
+
+            client_to_server_interceptor, server_to_client_interceptor = postgress_message_interceptor()
+
             await asyncio.gather(
                 # The documentation suggests there is one startup packets sent from
                 # the client, but there are actually two
-                pipe_logged(client_reader, server_writer, logging_title='client', startup_messages=2),
-                pipe_logged(server_reader, client_writer, logging_title='server', startup_messages=0),
+                pipe_logged(client_reader, server_writer, client_to_server_interceptor,
+                            logging_title='client', startup_messages=2),
+                pipe_logged(server_reader, client_writer, server_to_client_interceptor,
+                            logging_title='server', startup_messages=0),
             )
         finally:
             client_writer.close()
             server_writer.close()
 
-    async def pipe_logged(reader, writer, logging_title, startup_messages):
+    async def pipe_logged(reader, writer, interceptor, logging_title, startup_messages):
         message_reader = postgres_message_logger(logging_title, startup_messages)
         while not reader.at_eof():
-            writer.write(await message_reader(reader))
+            messages = await message_reader(reader)
+            intercepted_messages = interceptor(messages)
+            writer.write(intercepted_messages)
 
     server = await asyncio.start_server(handle_client, '0.0.0.0', 7777)
 
