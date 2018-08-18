@@ -56,6 +56,24 @@ def postgres_message_logger(logging_title, startup_messages):
         return has_message_bytes, message_type_bytes, message_length_bytes, message_bytes
 
     def pop_messages_from_buffer():
+        ''' Returns a list of triples, each triple being the raw bytes of 
+        components of a Postgres message previously pushed onto the internal
+        buffer by push_onto_buffer
+
+        The components of the triple:
+
+          type of the message,
+          the length of the messages,
+          the message payload itself,
+
+        Each component is optional, and will be the empty byte if its not present
+        The triples are so constructed so that full original bytes can be retrieved
+        by just concatanating them together, to make proxying easier
+
+        This can be safely called if the internal buffer ends in a partly populated
+        message. This message will be returned on a later call, once the full data
+        has been pused by push_onto_buffer
+        '''
         nonlocal messages_popped
 
         messages = []
