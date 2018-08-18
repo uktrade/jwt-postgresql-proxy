@@ -15,7 +15,7 @@ PAYLOAD_LENGTH_FORMAT = '!L'
 NO_DATA_TYPE = b'N'
 
 
-def postgres_message_parser(startup_messages):
+def postgres_message_parser(num_startup_messages):
     data_buffer = bytearray()
     messages_popped = 0
 
@@ -83,7 +83,7 @@ def postgres_message_parser(startup_messages):
 
         messages = []
         while True:
-            pop_startup_message = messages_popped < startup_messages
+            pop_startup_message = messages_popped < num_startup_messages
 
             has_popped, type_bytes, payload_length_bytes, payload_bytes = \
                 attempt_pop_message(START_MESSAGE_TYPE_LENGTH) if pop_startup_message else \
@@ -144,16 +144,16 @@ async def main():
                 # The documentation suggests there is one startup packets sent from
                 # the client, but there are actually two
                 pipe_intercepted(client_reader, server_writer, client_to_server_interceptor,
-                                 startup_messages=2),
+                                 num_startup_messages=2),
                 pipe_intercepted(server_reader, client_writer, server_to_client_interceptor,
-                                 startup_messages=0),
+                                 num_startup_messages=0),
             )
         finally:
             client_writer.close()
             server_writer.close()
 
-    async def pipe_intercepted(reader, writer, interceptor, startup_messages):
-        message_parser = postgres_message_parser(startup_messages)
+    async def pipe_intercepted(reader, writer, interceptor, num_startup_messages):
+        message_parser = postgres_message_parser(num_startup_messages)
         while not reader.at_eof():
             messages = await message_parser(reader)
             intercepted_messages = interceptor(messages)
