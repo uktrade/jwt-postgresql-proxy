@@ -45,10 +45,10 @@ def postgres_message_logger(logging_title, startup_messages):
         # The protocol specifies that the message length specified _includes_ MESSAGE_LENGTH_LENGTH,
         # so we subtract to get the actual length of the message.
         payload_length = \
-            (struct.unpack(PAYLOAD_LENGTH_FORMAT, payload_length_bytes)[0] - PAYLOAD_LENGTH_LENGTH) if has_payload_length_bytes and payload_length_bytes else \
+            (struct.unpack(PAYLOAD_LENGTH_FORMAT, payload_length_bytes)[0] - payload_length_length) if has_payload_length_bytes and payload_length_bytes else \
             0
 
-        payload_slice = slice(type_length + PAYLOAD_LENGTH_LENGTH, type_length + PAYLOAD_LENGTH_LENGTH + payload_length)
+        payload_slice = slice(type_length + payload_length_length, type_length + payload_length_length + payload_length)
         payload_bytes = data_buffer[payload_slice]
         has_payload_bytes = has_payload_length_bytes and len(payload_bytes) == payload_length
 
