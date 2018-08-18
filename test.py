@@ -11,7 +11,7 @@ async def main():
             ret = []
             async for row in cur:
                 ret.append(row)
-
+            assert ret == [(1,)]
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
