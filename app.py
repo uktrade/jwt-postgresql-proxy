@@ -111,7 +111,6 @@ async def main():
             while not reader.at_eof():
                 writer.write(await message_reader(reader))
         finally:
-            print('closing')
             writer.close()
 
     server = await asyncio.start_server(handle_client, '0.0.0.0', 7777)
