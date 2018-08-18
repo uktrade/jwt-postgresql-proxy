@@ -61,7 +61,7 @@ def postgres_message_parser(num_startup_messages):
         return has_payload_bytes, bytes(type_bytes), bytes(payload_length_bytes), bytes(payload_bytes)
 
     def extract_messages(data):
-        ''' Returns a list of triples, each triple being the raw bytes of 
+        ''' Yields a generator of triples, each triple being the raw bytes of 
         components of Postgres messages passed in data, or combined with that of
         previous calls where the data passed ended with an incomplete message
 
