@@ -77,9 +77,9 @@ def postgres_message_reader(startup_messages):
         # messages that somehow fail our own parsing, but would pass Postgres'
         data = await reader.read(MAX_READ)
         messages = get_messages(data)
-        if messages:
+        for message in messages:
             print(str(startup_messages) + ' -----------------')
-            print(messages)
+            print(message)
         return b''.join(flatten(messages))
 
     return _read
