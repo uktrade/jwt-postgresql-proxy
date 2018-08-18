@@ -58,7 +58,7 @@ def postgres_message_logger(logging_title, startup_messages):
 
         data_buffer[to_remove] = bytearray()
 
-        return has_payload_bytes, type_bytes, payload_length_bytes, payload_bytes
+        return has_payload_bytes, bytes(type_bytes), bytes(payload_length_bytes), bytes(payload_bytes)
 
     def pop_messages_from_buffer():
         ''' Returns a list of triples, each triple being the raw bytes of 
