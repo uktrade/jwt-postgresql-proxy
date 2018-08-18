@@ -23,6 +23,11 @@ def postgres_message_logger(logging_title, startup_messages):
         data_buffer.extend(incoming_data_buffer)
 
     def attempt_pop_message(message_type_length):
+        ''' Returns the next, possibly partly-received, message in data_buffer
+
+        If the message is complete, then it's removed from the data buffer, and
+        the return tuple's first component is True.
+        '''
         message_type_slice = slice(0, message_type_length)
         message_type_bytes = data_buffer[message_type_slice]
         has_message_type_bytes = len(message_type_bytes) == message_type_length
