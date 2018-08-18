@@ -19,8 +19,8 @@ def postgres_message_parser(num_startup_messages):
     data_buffer = bytearray()
     messages_popped = 0
 
-    def push_onto_buffer(incoming_data_buffer):
-        data_buffer.extend(incoming_data_buffer)
+    def push_data(incoming_data):
+        data_buffer.extend(incoming_data)
 
     def attempt_pop_message(type_length):
         ''' Returns the next, possibly partly-received, message in data_buffer
@@ -60,10 +60,10 @@ def postgres_message_parser(num_startup_messages):
 
         return has_payload_bytes, bytes(type_bytes), bytes(payload_length_bytes), bytes(payload_bytes)
 
-    def pop_messages_from_buffer():
+    def extract_messages(data):
         ''' Returns a list of triples, each triple being the raw bytes of 
-        components of a Postgres message previously pushed onto the internal
-        buffer by push_onto_buffer
+        components of Postgres messages passed in data, or combined with that of
+        previous calls where the data passed ended with an incomplete message
 
         The components of the triple:
 
@@ -74,14 +74,12 @@ def postgres_message_parser(num_startup_messages):
         Each component is optional, and will be the empty byte if its not present
         The triples are so constructed so that full original bytes can be retrieved
         by just concatanating them together, to make proxying easier
-
-        This can be safely called if the internal buffer ends in a partly populated
-        message. This message will be returned on a later call, once the full data
-        has been pushed by push_onto_buffer
         '''
-        nonlocal messages_popped
+        push_data(data)
 
+        nonlocal messages_popped
         messages = []
+
         while True:
             pop_startup_message = messages_popped < num_startup_messages
 
@@ -96,10 +94,6 @@ def postgres_message_parser(num_startup_messages):
             messages.append([type_bytes, payload_length_bytes, payload_bytes])
 
         return messages
-
-    async def extract_messages(data):
-        push_onto_buffer(data)
-        return pop_messages_from_buffer()
 
     return extract_messages
 
@@ -155,7 +149,7 @@ async def main():
         message_parser = postgres_message_parser(num_startup_messages)
         while not reader.at_eof():
             data = await reader.read(MAX_READ)
-            messages = await message_parser(data)
+            messages = message_parser(data)
             intercepted_messages = interceptor(messages)
             writer.write(b''.join(flatten(intercepted_messages)))
 
