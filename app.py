@@ -97,7 +97,7 @@ def postgres_message_logger(logging_title, startup_messages):
 
         return messages
 
-    async def _read(reader):
+    async def log_and_return_messages(reader):
         # We only return messages that we have logged, to prevent an attacker from constructing
         # messages that somehow fail our own parsing, but would pass Postgres'
         data = await reader.read(MAX_READ)
@@ -108,7 +108,7 @@ def postgres_message_logger(logging_title, startup_messages):
             print(message)
         return b''.join(flatten(messages))
 
-    return _read
+    return log_and_return_messages
 
 def flatten(list_to_flatten):
     return (
