@@ -90,7 +90,7 @@ def postgres_message_parser(num_startup_messages):
                 break
 
             messages_popped += 1
-            yield [type_bytes, payload_length_bytes, payload_bytes]
+            yield (type_bytes, payload_length_bytes, payload_bytes)
 
     return extract_messages
 
