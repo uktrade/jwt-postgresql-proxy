@@ -15,7 +15,7 @@ MESSAGE_LENGTH_FORMAT = '!L'
 NO_DATA_TYPE = b'N'
 
 
-def postgres_message_reader(startup_messages):
+def postgres_message_reader(logging_title, startup_messages):
     remaining = bytearray()
     messages_popped = 0
 
@@ -78,7 +78,7 @@ def postgres_message_reader(startup_messages):
         data = await reader.read(MAX_READ)
         messages = get_messages(data)
         for message in messages:
-            print(str(startup_messages) + ' -----------------')
+            print(str(logging_title) + ' -----------------')
             print(message)
         return b''.join(flatten(messages))
 
@@ -98,14 +98,14 @@ async def main():
             await asyncio.gather(
                 # The documentation suggests there is one startup packets sent from
                 # the client, but there are actually two
-                pipe_logged(client_reader, server_writer, startup_messages=2),
-                pipe_logged(server_reader, client_writer, startup_messages=0),
+                pipe_logged(client_reader, server_writer, logging_title='client', startup_messages=2),
+                pipe_logged(server_reader, client_writer, logging_title='server', startup_messages=0),
             )
         finally:
             client_writer.close()
 
-    async def pipe_logged(reader, writer, startup_messages):
-        message_reader = postgres_message_reader(startup_messages)
+    async def pipe_logged(reader, writer, logging_title, startup_messages):
+        message_reader = postgres_message_reader(logging_title, startup_messages)
 
         try:
             while not reader.at_eof():
