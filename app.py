@@ -6,6 +6,7 @@ from functools import (
 import hashlib
 import re
 import secrets
+import socket
 import struct
 
 # How much we read at once. Messages _can_ be larger than this
@@ -405,8 +406,9 @@ async def async_main():
         protocol = asyncio.StreamReaderProtocol(reader, client_connected_cb=handle_client)
         return protocol
 
-    await loop.create_server(protocol_factory, "0.0.0.0", 7777)
-
+    sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+    sock.bind(("0.0.0.0", 7777))
+    await loop.create_server(protocol_factory, sock=sock)
 
 
 def main():
