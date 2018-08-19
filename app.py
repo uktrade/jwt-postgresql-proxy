@@ -373,8 +373,8 @@ async def handle_client(loop, client_sock):
                 await on_data(data)
 
         await asyncio.gather(
-            on_read_sock(client_sock, processors[0].c2s_from_outside),
-            on_read_sock(server_sock, processors[0].s2c_from_outside),
+            on_read_sock(client_sock, outermost_processor.c2s_from_outside),
+            on_read_sock(server_sock, outermost_processor.s2c_from_outside),
         )
     finally:
         client_sock.close()
