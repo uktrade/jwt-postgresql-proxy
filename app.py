@@ -1,5 +1,8 @@
 import asyncio
 import collections
+from functools import (
+    partial,
+)
 import hashlib
 import re
 import secrets
@@ -22,8 +25,10 @@ PAYLOAD_LENGTH_FORMAT = "!L"
 NO_DATA_TYPE = b"N"
 SSL_REQUEST_PAYLOAD = B"\x04\xd2\x16/"
 
-Message = collections.namedtuple("Message", ("type", "payload_length", "payload"))
-
+Message = collections.namedtuple("Message", (
+    "type", "payload_length", "payload"))
+Processor = collections.namedtuple("Processor", (
+    "c2s_from_outside", "c2s_from_inside", "s2c_from_outside", "s2c_from_inside"))
 
 def postgres_message_parser(num_startup_messages):
     data_buffer = bytearray()
@@ -116,7 +121,29 @@ def postgres_message_parser(num_startup_messages):
     return extract_messages
 
 
-def postgres_auth_interceptor():
+def postgres_parser_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inner):
+    c2s_parser = postgres_message_parser(num_startup_messages=2)
+    s2c_parser = postgres_message_parser(num_startup_messages=0)
+
+    def c2s_from_outside(data):
+        messages = c2s_parser(data)
+        to_c2s_inner(messages)
+
+    def c2s_from_inside(messages):
+        data = b"".join(flatten(messages))
+        to_c2s_outer(data)
+
+    def s2c_from_outside(data):
+        messages = s2c_parser(data)
+        to_s2c_inner(messages)
+
+    def s2c_from_inside(messages):
+        to_s2c_outer(b"".join(flatten(messages)))
+
+    return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
+
+
+def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inner):
     # Experimental replacement of the username & password
     correct_client_password = b"proxy_mysecret"
     correct_server_password = b"mysecret"
@@ -167,7 +194,7 @@ def postgres_auth_interceptor():
             md5_incorrect
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
 
-    def client_to_server(messages):
+    def c2s_from_outside(messages):
         for message in messages:
             log_message("client->proxy", message)
             is_startup = message.type == b"" and message.payload != SSL_REQUEST_PAYLOAD
@@ -177,12 +204,15 @@ def postgres_auth_interceptor():
                 to_server_md5_response(message) if is_md5_response else \
                 message
             log_message("proxy->server", message_to_yield)
-            yield message_to_yield
+            to_c2s_inner([message_to_yield])
+
+    def c2s_from_inside(messages):
+        to_c2s_outer(messages)
 
     def to_client_md5_request(message):
         return message._replace(payload=message.payload[0:4] + client_salt)
 
-    def server_to_client(messages):
+    def s2c_from_outside(messages):
         nonlocal server_salt
         nonlocal client_salt
 
@@ -196,39 +226,106 @@ def postgres_auth_interceptor():
                 to_client_md5_request(message) if is_md5_request else \
                 message
             log_message("proxy->client", message_to_yield)
-            yield message_to_yield
+            to_s2c_inner([message_to_yield])
 
-    return client_to_server, server_to_client
+    def s2c_from_inside(messages):
+        to_s2c_outer(messages)
+
+    return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
+
+
+def echo_processor(to_c2s_outer, _, to_s2c_outer, __):
+    ''' Processor to not have to special case the innermost processor '''
+
+    def c2s_from_outside(data):
+        to_c2s_outer(data)
+
+    def c2s_from_inside(_):
+        pass
+
+    def s2c_from_outside(data):
+        to_s2c_outer(data)
+
+    def s2c_from_inside(_):
+        pass
+
+    return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
 
 async def handle_client(client_reader, client_writer):
     try:
         server_reader, server_writer = await asyncio.open_connection("127.0.0.1", 5432)
 
-        c2s_auth_interceptor, s2c_auth_interceptor = postgres_auth_interceptor()
+        # Processors are akin to middlewares in a typical HTTP server. They are adde,
+        # "outermost" first, and can process the response of "inner" processors
+        #
+        # However, they are more complex since they...
+        #
+        # - Can send...
+        #   - data to an inner processor destined for the client,
+        #     typically in response to data from an outer processor from the server
+        #   - data to an inner processor destined for the server,
+        #     typically in response to data from an outer processor from the client
+        #   - data to an outer processor destined for the client,
+        #     typically in response to data from an inner processor from the server
+        #   - data to an outer processor destined for the server,
+        #     typically in response to data from an inner processor from the client
+        #
+        # - Can send multiple messages, not just the one response to a request
+
+        def edge_to_c2s_outer(data):
+            server_writer.write(data)
+
+        def edge_to_s2c_outer(data):
+            client_writer.write(data)
+
+        def to_c2s_inner(i, data):
+            return processors[i + 1].c2s_from_outside(data)
+
+        def to_c2s_outer(i, data):
+            return processors[i - 1].c2s_from_inside(data)
+
+        def to_s2c_inner(i, data):
+            return processors[i + 1].s2c_from_outside(data)
+
+        def to_s2c_outer(i, data):
+            return processors[i - 1].s2c_from_inside(data)
+
+        outermost_processor = Processor(
+            c2s_from_outside=partial(to_c2s_inner, 0),
+            c2s_from_inside=edge_to_c2s_outer,
+            s2c_from_outside=partial(to_s2c_inner, 0),
+            s2c_from_inside=edge_to_s2c_outer,
+        )
+
+        processors = [
+            outermost_processor,
+        ] + [
+            processor_constructor(
+                partial(to_c2s_outer, i + 1),
+                partial(to_c2s_inner, i + 1),
+                partial(to_s2c_outer, i + 1),
+                partial(to_s2c_inner, i + 1),
+            )
+            for i, processor_constructor in enumerate([
+                postgres_parser_processor,
+                postgres_auth_processor,
+                echo_processor,
+            ])
+        ]
+
+        async def on_read(reader, on_data):
+            while not reader.at_eof():
+                data = await reader.read(MAX_READ)
+                on_data(data)
 
         await asyncio.gather(
-            # The documentation suggests there is one startup packets sent from
-            # the client, but there are actually two
-            pipe_intercepted(
-                client_reader, server_writer, c2s_auth_interceptor, num_startup_messages=2
-            ),
-            pipe_intercepted(
-                server_reader, client_writer, s2c_auth_interceptor, num_startup_messages=0
-            ),
+            on_read(client_reader, processors[0].c2s_from_outside),
+            on_read(server_reader, processors[0].s2c_from_outside),
         )
     finally:
         client_writer.close()
         server_writer.close()
-
-
-async def pipe_intercepted(reader, writer, interceptor, num_startup_messages):
-    message_parser = postgres_message_parser(num_startup_messages)
-    while not reader.at_eof():
-        data = await reader.read(MAX_READ)
-        messages = message_parser(data)
-        intercepted_messages = interceptor(messages)
-        writer.write(b"".join(flatten(intercepted_messages)))
 
 
 def unpack_length(length_bytes):

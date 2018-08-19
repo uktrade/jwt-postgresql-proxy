@@ -10,3 +10,4 @@
         - --include-naming-hint=yes
         - --disable=duplicate-code
         - --disable=missing-docstring
+        - --max-locals=25
