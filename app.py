@@ -398,7 +398,15 @@ def flatten(list_to_flatten):
 
 
 async def async_main():
-    await asyncio.start_server(handle_client, "0.0.0.0", 7777)
+    loop = asyncio.get_event_loop()
+
+    def protocol_factory():
+        reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(reader, client_connected_cb=handle_client)
+        return protocol
+
+    await loop.create_server(protocol_factory, "0.0.0.0", 7777)
+
 
 
 def main():
