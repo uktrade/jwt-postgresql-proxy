@@ -62,24 +62,24 @@ def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c
 
 def postgres_disable_ssl_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inner):
 
-    possible_ssl_request_message = b""
+    possible_ssl_request = b""
 
     async def c2s_from_outside(data):
-        nonlocal possible_ssl_request_message
+        nonlocal possible_ssl_request
 
-        num_remaining = len(SSL_REQUEST_MESSAGE) - len(possible_ssl_request_message)
-        possible_ssl_request_message, remaining_data = \
-            possible_ssl_request_message + data[0:num_remaining], data[num_remaining:]
+        num_remaining = len(SSL_REQUEST_MESSAGE) - len(possible_ssl_request)
+        possible_ssl_request, non_ssl_request = \
+            possible_ssl_request + data[0:num_remaining], data[num_remaining:]
 
         if not num_remaining:
-            await to_c2s_inner(remaining_data)
-        elif num_remaining and possible_ssl_request_message == SSL_REQUEST_MESSAGE:
+            await to_c2s_inner(non_ssl_request)
+        elif num_remaining and possible_ssl_request == SSL_REQUEST_MESSAGE:
             print(f'[client->proxy] {SSL_REQUEST_MESSAGE}')
             print(f'[proxy->client] {SSL_REQUEST_RESPONSE}')
             await to_s2c_outer(SSL_REQUEST_RESPONSE)
-            await to_c2s_inner(remaining_data)
-        elif num_remaining and len(possible_ssl_request_message) == len(SSL_REQUEST_MESSAGE):
-            await to_c2s_inner(possible_ssl_request_message + remaining_data)
+            await to_c2s_inner(non_ssl_request)
+        elif num_remaining and len(possible_ssl_request) == len(SSL_REQUEST_MESSAGE):
+            await to_c2s_inner(possible_ssl_request + non_ssl_request)
 
     async def c2s_from_inside(data):
         await to_c2s_outer(data)
