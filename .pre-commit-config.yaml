@@ -8,7 +8,6 @@
       types: [python]
       args:
         - --include-naming-hint=yes
-        - --ignore-imports=yes
         - --disable=duplicate-code
         - --disable=missing-docstring
 - repo: https://github.com/ambv/black
