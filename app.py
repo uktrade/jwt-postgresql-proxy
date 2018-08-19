@@ -127,6 +127,10 @@ def postgress_message_interceptor():
 
     server_salt = None
 
+    # We don't want the client to have any knowledge of the proxy -> server connection
+    # so we replace the salt the server has passed to us
+    client_salt = None
+
     def log_messages(logging_title, messages):
         for message in messages:
             print(str(logging_title) + " -----------------")
@@ -135,7 +139,7 @@ def postgress_message_interceptor():
 
     def to_server_md5_response(message):
         client_md5 = message.payload[3:-1]
-        correct_client_md5 = md5_salted(correct_client_password, username, server_salt)
+        correct_client_md5 = md5_salted(correct_client_password, username, client_salt)
         correct_server_md5 = md5_salted(correct_server_password, username, server_salt)
         server_md5 = correct_server_md5 if client_md5 == correct_client_md5 else md5_incorrect()
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
@@ -145,13 +149,21 @@ def postgress_message_interceptor():
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
             yield to_server_md5_response(message) if is_md5_response else message
 
+    def to_client_md5_request(message):
+        return message._replace(payload=message.payload[0:4] + client_salt)
+
     def server_to_client(messages):
         nonlocal server_salt
+        nonlocal client_salt
 
         for message in log_messages("server", messages):
             is_md5_request = message.type == b"R" and message.payload[0:4] == b"\x00\x00\x00\x05"
-            server_salt = message.payload[4:8] if is_md5_request else server_salt
-            yield message
+            server_salt, client_salt = (
+                (message.payload[4:8], secrets.token_bytes(4))
+                if is_md5_request
+                else (server_salt, client_salt)
+            )
+            yield to_client_md5_request(message) if is_md5_request else message
 
     return client_to_server, server_to_client
 
