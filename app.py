@@ -34,6 +34,18 @@ Processor = collections.namedtuple("Processor", (
 
 def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c_inner, **_):
 
+    async def c2s_from_outside(data):
+        await to_c2s_inner(data)
+
+    async def c2s_from_inside(data):
+        await loop.sock_sendall(server_sock, data)
+
+    async def s2c_from_outside(data):
+        await to_s2c_inner(data)
+
+    async def s2c_from_inside(data):
+        await loop.sock_sendall(client_sock, data)
+
     async def on_read_sock(sock, on_data):
         while True:
             data = await loop.sock_recv(sock, MAX_READ)
@@ -41,21 +53,9 @@ def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c
                 await on_data(data)
 
     asyncio.ensure_future(asyncio.gather(
-        on_read_sock(client_sock, to_c2s_inner),
-        on_read_sock(server_sock, to_s2c_inner),
+        on_read_sock(client_sock, c2s_from_outside),
+        on_read_sock(server_sock, s2c_from_outside),
     ))
-
-    async def c2s_from_outside(_):
-        pass
-
-    async def c2s_from_inside(data):
-        await loop.sock_sendall(server_sock, data)
-
-    async def s2c_from_outside(_):
-        pass
-
-    async def s2c_from_inside(data):
-        await loop.sock_sendall(client_sock, data)
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
