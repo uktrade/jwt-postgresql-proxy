@@ -133,20 +133,17 @@ def postgress_message_interceptor():
             print(message)
             yield message
 
+    def server_md5_message(message):
+        client_md5 = message.payload[3:-1]
+        correct_client_md5 = md5_salted(correct_client_password, username, salt)
+        correct_server_md5 = md5_salted(correct_server_password, username, salt)
+        server_md5 = correct_server_md5 if client_md5 == correct_client_md5 else md5_incorrect()
+        return message._replace(payload=b"md5" + server_md5 + b"\x00")
+
     def client_to_server(messages):
         for message in log_messages("client", messages):
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
-            if is_md5_response:
-                client_md5 = message.payload[3:-1]
-                correct_client_md5 = md5_salted(correct_client_password, username, salt)
-                correct_server_md5 = md5_salted(correct_server_password, username, salt)
-
-                server_md5 = (
-                    correct_server_md5 if client_md5 == correct_client_md5 else md5_incorrect()
-                )
-                message = message._replace(payload=b"md5" + server_md5 + b"\x00")
-
-            yield message
+            yield server_md5_message(message) if is_md5_response else message
 
     def server_to_client(messages):
         nonlocal salt
