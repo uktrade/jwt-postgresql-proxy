@@ -328,68 +328,61 @@ def echo_processor(to_c2s_outer, to_s2c_outer, **_):
 
 
 async def handle_client(loop, client_sock):
-    try:
-        server_sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
-                                    proto=socket.IPPROTO_TCP)
-        server_sock.setblocking(False)
-        await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
+    server_sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
+                                proto=socket.IPPROTO_TCP)
+    server_sock.setblocking(False)
+    await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
 
-        # Processors are akin to middlewares in a typical HTTP server. They are added,
-        # "outermost" first, and can process the response of "inner" processors
-        #
-        # However, they are more complex since they...
-        #
-        # - Can send...
-        #   - data to an inner processor destined for the client,
-        #     typically in response to data from an outer processor from the server
-        #   - data to an inner processor destined for the server,
-        #     typically in response to data from an outer processor from the client
-        #   - data to an outer processor destined for the client,
-        #     typically in response to data from an inner processor from the server
-        #   - data to an outer processor destined for the server,
-        #     typically in response to data from an inner processor from the client
-        #
-        # - Can send multiple messages, not just the one response to a request
+    # Processors are akin to middlewares in a typical HTTP server. They are added,
+    # "outermost" first, and can process the response of "inner" processors
+    #
+    # However, they are more complex since they...
+    #
+    # - Can send...
+    #   - data to an inner processor destined for the client,
+    #     typically in response to data from an outer processor from the server
+    #   - data to an inner processor destined for the server,
+    #     typically in response to data from an outer processor from the client
+    #   - data to an outer processor destined for the client,
+    #     typically in response to data from an inner processor from the server
+    #   - data to an outer processor destined for the server,
+    #     typically in response to data from an inner processor from the client
+    #
+    # - Can send multiple messages, not just the one response to a request
 
-        async def to_c2s_inner(i, data):
-            return await processors[i + 1].c2s_from_outside(data)
+    async def to_c2s_inner(i, data):
+        return await processors[i + 1].c2s_from_outside(data)
 
-        async def to_c2s_outer(i, data):
-            return await processors[i - 1].c2s_from_inside(data)
+    async def to_c2s_outer(i, data):
+        return await processors[i - 1].c2s_from_inside(data)
 
-        async def to_s2c_inner(i, data):
-            return await processors[i + 1].s2c_from_outside(data)
+    async def to_s2c_inner(i, data):
+        return await processors[i + 1].s2c_from_outside(data)
 
-        async def to_s2c_outer(i, data):
-            return await processors[i - 1].s2c_from_inside(data)
+    async def to_s2c_outer(i, data):
+        return await processors[i - 1].s2c_from_inside(data)
 
-        outermost_processor_constructor = partial(
-            postgres_root_processor,
-            loop, client_sock, server_sock,
+    outermost_processor_constructor = partial(
+        postgres_root_processor,
+        loop, client_sock, server_sock,
+    )
+
+    processors = [
+        processor_constructor(
+            to_c2s_outer=partial(to_c2s_outer, i),
+            to_c2s_inner=partial(to_c2s_inner, i),
+            to_s2c_outer=partial(to_s2c_outer, i),
+            to_s2c_inner=partial(to_s2c_inner, i),
         )
-
-        processors = [
-            processor_constructor(
-                to_c2s_outer=partial(to_c2s_outer, i),
-                to_c2s_inner=partial(to_c2s_inner, i),
-                to_s2c_outer=partial(to_s2c_outer, i),
-                to_s2c_inner=partial(to_s2c_inner, i),
-            )
-            for i, processor_constructor in enumerate([
-                outermost_processor_constructor,
-                postgres_disable_ssl_processor,
-                postgres_parser_processor,
-                postgres_log_processor,
-                postgres_auth_processor,
-                echo_processor,
-            ])
-        ]
-
-        await asyncio.Future()
-
-    finally:
-        client_sock.close()
-        server_sock.close()
+        for i, processor_constructor in enumerate([
+            outermost_processor_constructor,
+            postgres_disable_ssl_processor,
+            postgres_parser_processor,
+            postgres_log_processor,
+            postgres_auth_processor,
+            echo_processor,
+        ])
+    ]
 
 
 def unpack_length(length_bytes):
