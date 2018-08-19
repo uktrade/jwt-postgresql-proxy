@@ -125,7 +125,7 @@ def postgress_message_interceptor():
     # This would have to be read from the messages?
     username = b"postgres"
 
-    salt = None
+    server_salt = None
 
     def log_messages(logging_title, messages):
         for message in messages:
@@ -135,8 +135,8 @@ def postgress_message_interceptor():
 
     def server_md5_message(message):
         client_md5 = message.payload[3:-1]
-        correct_client_md5 = md5_salted(correct_client_password, username, salt)
-        correct_server_md5 = md5_salted(correct_server_password, username, salt)
+        correct_client_md5 = md5_salted(correct_client_password, username, server_salt)
+        correct_server_md5 = md5_salted(correct_server_password, username, server_salt)
         server_md5 = correct_server_md5 if client_md5 == correct_client_md5 else md5_incorrect()
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
 
@@ -146,12 +146,12 @@ def postgress_message_interceptor():
             yield server_md5_message(message) if is_md5_response else message
 
     def server_to_client(messages):
-        nonlocal salt
+        nonlocal server_salt
 
         for message in log_messages("server", messages):
             is_md5_request = message.type == b"R" and message.payload[0:4] == b"\x00\x00\x00\x05"
             if is_md5_request:
-                salt = message.payload[4:8]
+                server_salt = message.payload[4:8]
             yield message
 
     return client_to_server, server_to_client
