@@ -65,7 +65,7 @@ def postgres_message_parser(num_startup_messages):
         )
         payload_bytes = data_buffer[payload_slice]
         has_payload_bytes = has_payload_length_bytes and len(payload_bytes) == payload_length
-        message_length = type_length + PAYLOAD_LENGTH_LENGTH + payload_length
+        message_length = type_length + payload_length_length + payload_length
 
         to_remove = \
             slice(0, message_length) if has_payload_bytes else \
