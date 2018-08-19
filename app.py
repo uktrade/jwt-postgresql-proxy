@@ -37,7 +37,8 @@ def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c
     async def on_read_sock(sock, on_data):
         while True:
             data = await loop.sock_recv(sock, MAX_READ)
-            await on_data(data)
+            if data:
+                await on_data(data)
 
     loop.create_task(asyncio.gather(
         on_read_sock(client_sock, to_c2s_inner),
