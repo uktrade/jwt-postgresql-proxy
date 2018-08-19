@@ -372,10 +372,12 @@ async def handle_client(loop, client_sock):
                 data = await loop.sock_recv(sock, MAX_READ)
                 await on_data(data)
 
-        await asyncio.gather(
+        loop.create_task(asyncio.gather(
             on_read_sock(client_sock, outermost_processor.c2s_from_outside),
             on_read_sock(server_sock, outermost_processor.s2c_from_outside),
-        )
+        ))
+        await asyncio.Future()
+
     finally:
         client_sock.close()
         server_sock.close()
