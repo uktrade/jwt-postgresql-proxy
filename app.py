@@ -122,9 +122,6 @@ def postgres_auth_interceptor():
     username = b"postgres"
 
     server_salt = None
-
-    # We don't want the client to have any knowledge of the proxy -> server connection
-    # so we replace the salt the server has passed to us
     client_salt = None
 
     def log_message(logging_title, message):
