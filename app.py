@@ -131,11 +131,8 @@ def postgress_message_interceptor():
     # so we replace the salt the server has passed to us
     client_salt = None
 
-    def log_messages(logging_title, messages):
-        for message in messages:
-            print(str(logging_title) + " -----------------")
-            print(message)
-            yield message
+    def log_message(logging_title, message):
+        print(f"[{logging_title}] " + str(message))
 
     def to_server_md5_response(message):
         client_md5 = message.payload[3:-1]
@@ -145,9 +142,12 @@ def postgress_message_interceptor():
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
 
     def client_to_server(messages):
-        for message in log_messages("client", messages):
+        for message in messages:
+            log_message("client->proxy", message)
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
-            yield to_server_md5_response(message) if is_md5_response else message
+            message_to_yield = to_server_md5_response(message) if is_md5_response else message
+            log_message("proxy->server", message_to_yield)
+            yield message_to_yield
 
     def to_client_md5_request(message):
         return message._replace(payload=message.payload[0:4] + client_salt)
@@ -156,14 +156,17 @@ def postgress_message_interceptor():
         nonlocal server_salt
         nonlocal client_salt
 
-        for message in log_messages("server", messages):
+        for message in messages:
+            log_message("server->proxy", message)
             is_md5_request = message.type == b"R" and message.payload[0:4] == b"\x00\x00\x00\x05"
             server_salt, client_salt = (
                 (message.payload[4:8], secrets.token_bytes(4))
                 if is_md5_request
                 else (server_salt, client_salt)
             )
-            yield to_client_md5_request(message) if is_md5_request else message
+            message_to_yield = to_client_md5_request(message) if is_md5_request else message
+            log_message("proxy->client", message_to_yield)
+            yield message_to_yield
 
     return client_to_server, server_to_client
 
