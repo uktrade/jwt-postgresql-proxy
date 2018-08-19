@@ -104,6 +104,7 @@ def postgres_message_parser(num_startup_messages):
 
         nonlocal messages_popped
 
+        messages = []
         while True:
             pop_startup_message = messages_popped < num_startup_messages
 
@@ -116,7 +117,9 @@ def postgres_message_parser(num_startup_messages):
                 break
 
             messages_popped += 1
-            yield message
+            messages.append(message)
+
+        return messages
 
     return extract_messages
 
@@ -143,6 +146,31 @@ def postgres_parser_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_i
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
 
+def postgres_log_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inner):
+
+    def log_all_messages(logging_title, messages):
+        for message in messages:
+            print(f"[{logging_title}] " + str(message))
+
+    def c2s_from_outside(messages):
+        log_all_messages('client->proxy', messages)
+        to_c2s_inner(messages)
+
+    def c2s_from_inside(messages):
+        log_all_messages('proxy->server', messages)
+        to_c2s_outer(messages)
+
+    def s2c_from_outside(messages):
+        log_all_messages('server->proxy', messages)
+        to_s2c_inner(messages)
+
+    def s2c_from_inside(messages):
+        log_all_messages('proxy->client', messages)
+        to_s2c_outer(messages)
+
+    return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
+
+
 def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inner):
     # Experimental replacement of the username & password
     correct_client_password = b"proxy_mysecret"
@@ -155,9 +183,6 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
 
     server_salt = None
     client_salt = None
-
-    def log_message(logging_title, message):
-        print(f"[{logging_title}] " + str(message))
 
     def to_server_startup(message):
         # The startup message seems to have an extra null character at the beginning,
@@ -196,14 +221,12 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
 
     def c2s_from_outside(messages):
         for message in messages:
-            log_message("client->proxy", message)
             is_startup = message.type == b"" and message.payload != SSL_REQUEST_PAYLOAD
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
             message_to_yield = \
                 to_server_startup(message) if is_startup else \
                 to_server_md5_response(message) if is_md5_response else \
                 message
-            log_message("proxy->server", message_to_yield)
             to_c2s_inner([message_to_yield])
 
     def c2s_from_inside(messages):
@@ -217,7 +240,6 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
         nonlocal client_salt
 
         for message in messages:
-            log_message("server->proxy", message)
             is_md5_request = message.type == b"R" and message.payload[0:4] == b"\x00\x00\x00\x05"
             server_salt, client_salt = \
                 (message.payload[4:8], secrets.token_bytes(4)) if is_md5_request else \
@@ -225,7 +247,6 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
             message_to_yield = \
                 to_client_md5_request(message) if is_md5_request else \
                 message
-            log_message("proxy->client", message_to_yield)
             to_s2c_inner([message_to_yield])
 
     def s2c_from_inside(messages):
@@ -309,6 +330,7 @@ async def handle_client(client_reader, client_writer):
             )
             for i, processor_constructor in enumerate([
                 postgres_parser_processor,
+                postgres_log_processor,
                 postgres_auth_processor,
                 echo_processor,
             ])
