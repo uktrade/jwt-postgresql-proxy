@@ -160,22 +160,6 @@ def postgress_message_interceptor():
     return client_to_server, server_to_client
 
 
-def md5(data):
-    return hashlib.md5(data).hexdigest().encode("utf-8")
-
-
-def md5_salted(password, username, salt):
-    return md5(md5(password + username) + salt)
-
-
-def md5_incorrect():
-    return md5(secrets.token_bytes(32))
-
-
-def flatten(list_to_flatten):
-    return (item for sublist in list_to_flatten for item in sublist)
-
-
 async def handle_client(client_reader, client_writer):
     try:
         server_reader, server_writer = await asyncio.open_connection("127.0.0.1", 5432)
@@ -206,6 +190,22 @@ async def pipe_intercepted(reader, writer, interceptor, num_startup_messages):
         messages = message_parser(data)
         intercepted_messages = interceptor(messages)
         writer.write(b"".join(flatten(intercepted_messages)))
+
+
+def md5(data):
+    return hashlib.md5(data).hexdigest().encode("utf-8")
+
+
+def md5_salted(password, username, salt):
+    return md5(md5(password + username) + salt)
+
+
+def md5_incorrect():
+    return md5(secrets.token_bytes(32))
+
+
+def flatten(list_to_flatten):
+    return (item for sublist in list_to_flatten for item in sublist)
 
 
 async def async_main():
