@@ -160,8 +160,7 @@ def postgres_parser_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_i
         to_c2s_inner(messages)
 
     def c2s_from_inside(messages):
-        data = b"".join(flatten(messages))
-        to_c2s_outer(data)
+        to_c2s_outer(b"".join(flatten(messages)))
 
     def s2c_from_outside(data):
         messages = s2c_parser(data)
