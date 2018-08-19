@@ -32,7 +32,7 @@ Processor = collections.namedtuple("Processor", (
     "c2s_from_outside", "c2s_from_inside", "s2c_from_outside", "s2c_from_inside"))
 
 
-def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c_inner):
+def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c_inner, **_):
 
     async def on_read_sock(sock, on_data):
         while True:
@@ -309,7 +309,7 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
 
-def echo_processor(to_c2s_outer, _, to_s2c_outer, __):
+def echo_processor(to_c2s_outer, to_s2c_outer, **_):
     ''' Processor to not have to special case the innermost processor '''
 
     async def c2s_from_outside(data):
@@ -363,22 +363,20 @@ async def handle_client(loop, client_sock):
         async def to_s2c_outer(i, data):
             return await processors[i - 1].s2c_from_inside(data)
 
-        outermost_processor = postgres_root_processor(
+        outermost_processor_constructor = partial(
+            postgres_root_processor,
             loop, client_sock, server_sock,
-            to_c2s_inner=partial(to_c2s_inner, 0),
-            to_s2c_inner=partial(to_s2c_inner, 0)
         )
 
         processors = [
-            outermost_processor,
-        ] + [
             processor_constructor(
-                partial(to_c2s_outer, i + 1),
-                partial(to_c2s_inner, i + 1),
-                partial(to_s2c_outer, i + 1),
-                partial(to_s2c_inner, i + 1),
+                to_c2s_outer=partial(to_c2s_outer, i),
+                to_c2s_inner=partial(to_c2s_inner, i),
+                to_s2c_outer=partial(to_s2c_outer, i),
+                to_s2c_inner=partial(to_s2c_inner, i),
             )
             for i, processor_constructor in enumerate([
+                outermost_processor_constructor,
                 postgres_disable_ssl_processor,
                 postgres_parser_processor,
                 postgres_log_processor,
