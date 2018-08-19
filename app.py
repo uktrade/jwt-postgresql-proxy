@@ -173,43 +173,39 @@ def flatten(list_to_flatten):
     return (item for sublist in list_to_flatten for item in sublist)
 
 
+async def handle_client(client_reader, client_writer):
+    try:
+        server_reader, server_writer = await asyncio.open_connection("127.0.0.1", 5432)
+
+        client_to_server_interceptor, server_to_client_interceptor = (
+            postgress_message_interceptor()
+        )
+
+        await asyncio.gather(
+            # The documentation suggests there is one startup packets sent from
+            # the client, but there are actually two
+            pipe_intercepted(
+                client_reader, server_writer, client_to_server_interceptor, num_startup_messages=2
+            ),
+            pipe_intercepted(
+                server_reader, client_writer, server_to_client_interceptor, num_startup_messages=0
+            ),
+        )
+    finally:
+        client_writer.close()
+        server_writer.close()
+
+
+async def pipe_intercepted(reader, writer, interceptor, num_startup_messages):
+    message_parser = postgres_message_parser(num_startup_messages)
+    while not reader.at_eof():
+        data = await reader.read(MAX_READ)
+        messages = message_parser(data)
+        intercepted_messages = interceptor(messages)
+        writer.write(b"".join(flatten(intercepted_messages)))
+
+
 async def async_main():
-    async def handle_client(client_reader, client_writer):
-        try:
-            server_reader, server_writer = await asyncio.open_connection("127.0.0.1", 5432)
-
-            client_to_server_interceptor, server_to_client_interceptor = (
-                postgress_message_interceptor()
-            )
-
-            await asyncio.gather(
-                # The documentation suggests there is one startup packets sent from
-                # the client, but there are actually two
-                pipe_intercepted(
-                    client_reader,
-                    server_writer,
-                    client_to_server_interceptor,
-                    num_startup_messages=2,
-                ),
-                pipe_intercepted(
-                    server_reader,
-                    client_writer,
-                    server_to_client_interceptor,
-                    num_startup_messages=0,
-                ),
-            )
-        finally:
-            client_writer.close()
-            server_writer.close()
-
-    async def pipe_intercepted(reader, writer, interceptor, num_startup_messages):
-        message_parser = postgres_message_parser(num_startup_messages)
-        while not reader.at_eof():
-            data = await reader.read(MAX_READ)
-            messages = message_parser(data)
-            intercepted_messages = interceptor(messages)
-            writer.write(b"".join(flatten(intercepted_messages)))
-
     await asyncio.start_server(handle_client, "0.0.0.0", 7777)
 
 
