@@ -27,6 +27,9 @@ def postgres_message_parser(num_startup_messages):
     def push_data(incoming_data):
         data_buffer.extend(incoming_data)
 
+    def unpack_length(length_bytes):
+        return struct.unpack(PAYLOAD_LENGTH_FORMAT, length_bytes)[0]
+
     def attempt_pop_message(type_length):
         """ Returns the next, possibly partly-received, message in data_buffer
 
@@ -39,9 +42,9 @@ def postgres_message_parser(num_startup_messages):
 
         # The documentation is a bit wrong: the 'N' type for no data, is _not_ followed
         # by a length
-        payload_length_length = (
-            0 if has_type_bytes and type_bytes == NO_DATA_TYPE else PAYLOAD_LENGTH_LENGTH
-        )
+        payload_length_length = \
+            0 if has_type_bytes and type_bytes == NO_DATA_TYPE else \
+            PAYLOAD_LENGTH_LENGTH
 
         payload_length_slice = slice(type_length, type_length + payload_length_length)
         payload_length_bytes = data_buffer[payload_length_slice]
@@ -51,11 +54,10 @@ def postgres_message_parser(num_startup_messages):
 
         # The protocol specifies that the message length specified _includes_ MESSAGE_LENGTH_LENGTH,
         # so we subtract to get the actual length of the message.
-        payload_length = (
-            (struct.unpack(PAYLOAD_LENGTH_FORMAT, payload_length_bytes)[0] - payload_length_length)
-            if has_payload_length_bytes and payload_length_length
-            else 0
-        )
+        should_unpack = has_payload_length_bytes and payload_length_length
+        payload_length = \
+            unpack_length(payload_length_bytes) - payload_length_length if should_unpack else \
+            0
 
         payload_slice = slice(
             type_length + payload_length_length,
@@ -63,12 +65,11 @@ def postgres_message_parser(num_startup_messages):
         )
         payload_bytes = data_buffer[payload_slice]
         has_payload_bytes = has_payload_length_bytes and len(payload_bytes) == payload_length
+        message_length = type_length + PAYLOAD_LENGTH_LENGTH + payload_length
 
-        to_remove = (
-            slice(0, type_length + PAYLOAD_LENGTH_LENGTH + payload_length)
-            if has_payload_bytes
-            else slice(0, 0)
-        )
+        to_remove = \
+            slice(0, message_length) if has_payload_bytes else \
+            slice(0, 0)
 
         data_buffer[to_remove] = bytearray()
 
@@ -99,9 +100,9 @@ def postgres_message_parser(num_startup_messages):
         while True:
             pop_startup_message = messages_popped < num_startup_messages
 
-            type_length = (
-                START_MESSAGE_TYPE_LENGTH if pop_startup_message else LATER_MESSAGE_TYPE_LENGTH
-            )
+            type_length = \
+                START_MESSAGE_TYPE_LENGTH if pop_startup_message else \
+                LATER_MESSAGE_TYPE_LENGTH
             has_popped, message = attempt_pop_message(type_length)
 
             if not has_popped:
@@ -132,14 +133,18 @@ def postgres_auth_interceptor():
         correct_client_md5 = md5_salted(correct_client_password, username, client_salt)
         correct_server_md5 = md5_salted(correct_server_password, username, server_salt)
         md5_incorrect = md5(secrets.token_bytes(32))
-        server_md5 = correct_server_md5 if client_md5 == correct_client_md5 else md5_incorrect
+        server_md5 = \
+            correct_server_md5 if client_md5 == correct_client_md5 else \
+            md5_incorrect
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
 
     def client_to_server(messages):
         for message in messages:
             log_message("client->proxy", message)
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
-            message_to_yield = to_server_md5_response(message) if is_md5_response else message
+            message_to_yield = \
+                to_server_md5_response(message) if is_md5_response else \
+                message
             log_message("proxy->server", message_to_yield)
             yield message_to_yield
 
@@ -153,12 +158,12 @@ def postgres_auth_interceptor():
         for message in messages:
             log_message("server->proxy", message)
             is_md5_request = message.type == b"R" and message.payload[0:4] == b"\x00\x00\x00\x05"
-            server_salt, client_salt = (
-                (message.payload[4:8], secrets.token_bytes(4))
-                if is_md5_request
-                else (server_salt, client_salt)
-            )
-            message_to_yield = to_client_md5_request(message) if is_md5_request else message
+            server_salt, client_salt = \
+                (message.payload[4:8], secrets.token_bytes(4)) if is_md5_request else \
+                (server_salt, client_salt)
+            message_to_yield = \
+                to_client_md5_request(message) if is_md5_request else \
+                message
             log_message("proxy->client", message_to_yield)
             yield message_to_yield
 
