@@ -28,7 +28,7 @@ def postgres_message_parser(num_startup_messages):
         data_buffer.extend(incoming_data)
 
     def unpack_length(length_bytes):
-        return struct.unpack(PAYLOAD_LENGTH_FORMAT, length_bytes)[0]
+        return struct.unpack(PAYLOAD_LENGTH_FORMAT, length_bytes)[0] - PAYLOAD_LENGTH_LENGTH
 
     def attempt_pop_message(type_length):
         """ Returns the next, possibly partly-received, message in data_buffer
@@ -56,7 +56,7 @@ def postgres_message_parser(num_startup_messages):
         # so we subtract to get the actual length of the message.
         should_unpack = has_payload_length_bytes and payload_length_length
         payload_length = \
-            unpack_length(payload_length_bytes) - payload_length_length if should_unpack else \
+            unpack_length(payload_length_bytes) if should_unpack else \
             0
 
         payload_slice = slice(
