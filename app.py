@@ -9,6 +9,9 @@ import secrets
 import struct
 
 # How much we read at once. Messages _can_ be larger than this
+# Often good to test this set to something really low to make
+# sure the logic works for network reads that return only partial
+# messages
 MAX_READ = 16384
 
 # Startup message (also called startup packets) don't have a type specified
@@ -19,16 +22,47 @@ LATER_MESSAGE_TYPE_LENGTH = 1
 PAYLOAD_LENGTH_LENGTH = 4
 PAYLOAD_LENGTH_FORMAT = "!L"
 
-# This works when N is a response to aSSL request, but will probably go wrong
-# if the server actually sends a Notice response, since that will be followed
-# by data
-NO_DATA_TYPE = b"N"
-SSL_REQUEST_PAYLOAD = B"\x04\xd2\x16/"
+SSL_REQUEST_MESSAGE = B"\x00\x00\x00\x08\x04\xd2\x16/"
+SSL_REQUEST_RESPONSE = B"N"
 
 Message = collections.namedtuple("Message", (
     "type", "payload_length", "payload"))
 Processor = collections.namedtuple("Processor", (
     "c2s_from_outside", "c2s_from_inside", "s2c_from_outside", "s2c_from_inside"))
+
+
+def postgres_disable_ssl_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inner):
+
+    possible_ssl_request_message = b""
+
+    def c2s_from_outside(data):
+        nonlocal possible_ssl_request_message
+
+        num_remaining = len(SSL_REQUEST_MESSAGE) - len(possible_ssl_request_message)
+        possible_ssl_request_message, remaining_data = \
+            possible_ssl_request_message + data[0:num_remaining], data[num_remaining:]
+
+        if not num_remaining:
+            to_c2s_inner(remaining_data)
+        elif num_remaining and possible_ssl_request_message == SSL_REQUEST_MESSAGE:
+            print(f'[client->proxy] {SSL_REQUEST_MESSAGE}')
+            print(f'[proxy->client] {SSL_REQUEST_RESPONSE}')
+            to_s2c_outer(SSL_REQUEST_RESPONSE)
+            to_c2s_inner(remaining_data)
+        elif num_remaining and len(possible_ssl_request_message) == len(SSL_REQUEST_MESSAGE):
+            to_c2s_inner(possible_ssl_request_message + remaining_data)
+
+    def c2s_from_inside(data):
+        to_c2s_outer(data)
+
+    def s2c_from_outside(data):
+        to_s2c_inner(data)
+
+    def s2c_from_inside(data):
+        to_s2c_outer(data)
+
+    return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
+
 
 def postgres_message_parser(num_startup_messages):
     data_buffer = bytearray()
@@ -47,32 +81,25 @@ def postgres_message_parser(num_startup_messages):
         type_bytes = data_buffer[type_slice]
         has_type_bytes = len(type_bytes) == type_length
 
-        # The documentation is a bit wrong: the 'N' type for no data, is _not_ followed
-        # by a length
-        payload_length_length = \
-            0 if has_type_bytes and type_bytes == NO_DATA_TYPE else \
-            PAYLOAD_LENGTH_LENGTH
-
-        payload_length_slice = slice(type_length, type_length + payload_length_length)
+        payload_length_slice = slice(type_length, type_length + PAYLOAD_LENGTH_LENGTH)
         payload_length_bytes = data_buffer[payload_length_slice]
         has_payload_length_bytes = (
-            has_type_bytes and len(payload_length_bytes) == payload_length_length
+            has_type_bytes and len(payload_length_bytes) == PAYLOAD_LENGTH_LENGTH
         )
 
         # The protocol specifies that the message length specified _includes_ MESSAGE_LENGTH_LENGTH,
         # so we subtract to get the actual length of the message.
-        should_unpack = has_payload_length_bytes and payload_length_length
         payload_length = \
-            unpack_length(payload_length_bytes) if should_unpack else \
+            unpack_length(payload_length_bytes) if has_payload_length_bytes else \
             0
 
         payload_slice = slice(
-            type_length + payload_length_length,
-            type_length + payload_length_length + payload_length,
+            type_length + PAYLOAD_LENGTH_LENGTH,
+            type_length + PAYLOAD_LENGTH_LENGTH + payload_length,
         )
         payload_bytes = data_buffer[payload_slice]
         has_payload_bytes = has_payload_length_bytes and len(payload_bytes) == payload_length
-        message_length = type_length + payload_length_length + payload_length
+        message_length = type_length + PAYLOAD_LENGTH_LENGTH + payload_length
 
         to_remove = \
             slice(0, message_length) if has_payload_bytes else \
@@ -125,7 +152,7 @@ def postgres_message_parser(num_startup_messages):
 
 
 def postgres_parser_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inner):
-    c2s_parser = postgres_message_parser(num_startup_messages=2)
+    c2s_parser = postgres_message_parser(num_startup_messages=1)
     s2c_parser = postgres_message_parser(num_startup_messages=0)
 
     def c2s_from_outside(data):
@@ -221,7 +248,7 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
 
     def c2s_from_outside(messages):
         for message in messages:
-            is_startup = message.type == b"" and message.payload != SSL_REQUEST_PAYLOAD
+            is_startup = message.type == b""
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
             message_to_yield = \
                 to_server_startup(message) if is_startup else \
@@ -329,6 +356,7 @@ async def handle_client(client_reader, client_writer):
                 partial(to_s2c_inner, i + 1),
             )
             for i, processor_constructor in enumerate([
+                postgres_disable_ssl_processor,
                 postgres_parser_processor,
                 postgres_log_processor,
                 postgres_auth_processor,
