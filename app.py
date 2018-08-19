@@ -36,7 +36,7 @@ def postgres_disable_ssl_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_
 
     possible_ssl_request_message = b""
 
-    def c2s_from_outside(data):
+    async def c2s_from_outside(data):
         nonlocal possible_ssl_request_message
 
         num_remaining = len(SSL_REQUEST_MESSAGE) - len(possible_ssl_request_message)
@@ -44,23 +44,23 @@ def postgres_disable_ssl_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_
             possible_ssl_request_message + data[0:num_remaining], data[num_remaining:]
 
         if not num_remaining:
-            to_c2s_inner(remaining_data)
+            await to_c2s_inner(remaining_data)
         elif num_remaining and possible_ssl_request_message == SSL_REQUEST_MESSAGE:
             print(f'[client->proxy] {SSL_REQUEST_MESSAGE}')
             print(f'[proxy->client] {SSL_REQUEST_RESPONSE}')
-            to_s2c_outer(SSL_REQUEST_RESPONSE)
-            to_c2s_inner(remaining_data)
+            await to_s2c_outer(SSL_REQUEST_RESPONSE)
+            await to_c2s_inner(remaining_data)
         elif num_remaining and len(possible_ssl_request_message) == len(SSL_REQUEST_MESSAGE):
-            to_c2s_inner(possible_ssl_request_message + remaining_data)
+            await to_c2s_inner(possible_ssl_request_message + remaining_data)
 
-    def c2s_from_inside(data):
-        to_c2s_outer(data)
+    async def c2s_from_inside(data):
+        await to_c2s_outer(data)
 
-    def s2c_from_outside(data):
-        to_s2c_inner(data)
+    async def s2c_from_outside(data):
+        await to_s2c_inner(data)
 
-    def s2c_from_inside(data):
-        to_s2c_outer(data)
+    async def s2c_from_inside(data):
+        await to_s2c_outer(data)
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
@@ -156,19 +156,19 @@ def postgres_parser_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_i
     c2s_parser = postgres_message_parser(num_startup_messages=1)
     s2c_parser = postgres_message_parser(num_startup_messages=0)
 
-    def c2s_from_outside(data):
+    async def c2s_from_outside(data):
         messages = c2s_parser(data)
-        to_c2s_inner(messages)
+        await to_c2s_inner(messages)
 
-    def c2s_from_inside(messages):
-        to_c2s_outer(b"".join(flatten(messages)))
+    async def c2s_from_inside(messages):
+        await to_c2s_outer(b"".join(flatten(messages)))
 
-    def s2c_from_outside(data):
+    async def s2c_from_outside(data):
         messages = s2c_parser(data)
-        to_s2c_inner(messages)
+        await to_s2c_inner(messages)
 
-    def s2c_from_inside(messages):
-        to_s2c_outer(b"".join(flatten(messages)))
+    async def s2c_from_inside(messages):
+        await to_s2c_outer(b"".join(flatten(messages)))
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
@@ -179,21 +179,21 @@ def postgres_log_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inne
         for message in messages:
             print(f"[{logging_title}] " + str(message))
 
-    def c2s_from_outside(messages):
+    async def c2s_from_outside(messages):
         log_all_messages('client->proxy', messages)
-        to_c2s_inner(messages)
+        await to_c2s_inner(messages)
 
-    def c2s_from_inside(messages):
+    async def c2s_from_inside(messages):
         log_all_messages('proxy->server', messages)
-        to_c2s_outer(messages)
+        await to_c2s_outer(messages)
 
-    def s2c_from_outside(messages):
+    async def s2c_from_outside(messages):
         log_all_messages('server->proxy', messages)
-        to_s2c_inner(messages)
+        await to_s2c_inner(messages)
 
-    def s2c_from_inside(messages):
+    async def s2c_from_inside(messages):
         log_all_messages('proxy->client', messages)
-        to_s2c_outer(messages)
+        await to_s2c_outer(messages)
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
@@ -246,7 +246,7 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
             md5_incorrect
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
 
-    def c2s_from_outside(messages):
+    async def c2s_from_outside(messages):
         for message in messages:
             is_startup = message.type == b""
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
@@ -254,15 +254,15 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
                 to_server_startup(message) if is_startup else \
                 to_server_md5_response(message) if is_md5_response else \
                 message
-            to_c2s_inner([message_to_yield])
+            await to_c2s_inner([message_to_yield])
 
-    def c2s_from_inside(messages):
-        to_c2s_outer(messages)
+    async def c2s_from_inside(messages):
+        await to_c2s_outer(messages)
 
     def to_client_md5_request(message):
         return message._replace(payload=message.payload[0:4] + client_salt)
 
-    def s2c_from_outside(messages):
+    async def s2c_from_outside(messages):
         nonlocal server_salt
         nonlocal client_salt
 
@@ -274,10 +274,10 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
             message_to_yield = \
                 to_client_md5_request(message) if is_md5_request else \
                 message
-            to_s2c_inner([message_to_yield])
+            await to_s2c_inner([message_to_yield])
 
-    def s2c_from_inside(messages):
-        to_s2c_outer(messages)
+    async def s2c_from_inside(messages):
+        await to_s2c_outer(messages)
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
@@ -285,22 +285,22 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
 def echo_processor(to_c2s_outer, _, to_s2c_outer, __):
     ''' Processor to not have to special case the innermost processor '''
 
-    def c2s_from_outside(data):
-        to_c2s_outer(data)
+    async def c2s_from_outside(data):
+        await to_c2s_outer(data)
 
-    def c2s_from_inside(_):
+    async def c2s_from_inside(_):
         pass
 
-    def s2c_from_outside(data):
-        to_s2c_outer(data)
+    async def s2c_from_outside(data):
+        await to_s2c_outer(data)
 
-    def s2c_from_inside(_):
+    async def s2c_from_inside(_):
         pass
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
 
-async def handle_client(client_reader, client_writer):
+async def handle_client(loop, client_sock):
     try:
         server_reader, server_writer = await asyncio.open_connection("127.0.0.1", 5432)
 
@@ -321,23 +321,23 @@ async def handle_client(client_reader, client_writer):
         #
         # - Can send multiple messages, not just the one response to a request
 
-        def edge_to_c2s_outer(data):
+        async def edge_to_c2s_outer(data):
             server_writer.write(data)
 
-        def edge_to_s2c_outer(data):
-            client_writer.write(data)
+        async def edge_to_s2c_outer(data):
+            await loop.sock_sendall(client_sock, data)
 
-        def to_c2s_inner(i, data):
-            return processors[i + 1].c2s_from_outside(data)
+        async def to_c2s_inner(i, data):
+            return await processors[i + 1].c2s_from_outside(data)
 
-        def to_c2s_outer(i, data):
-            return processors[i - 1].c2s_from_inside(data)
+        async def to_c2s_outer(i, data):
+            return await processors[i - 1].c2s_from_inside(data)
 
-        def to_s2c_inner(i, data):
-            return processors[i + 1].s2c_from_outside(data)
+        async def to_s2c_inner(i, data):
+            return await processors[i + 1].s2c_from_outside(data)
 
-        def to_s2c_outer(i, data):
-            return processors[i - 1].s2c_from_inside(data)
+        async def to_s2c_outer(i, data):
+            return await processors[i - 1].s2c_from_inside(data)
 
         outermost_processor = Processor(
             c2s_from_outside=partial(to_c2s_inner, 0),
@@ -364,17 +364,22 @@ async def handle_client(client_reader, client_writer):
             ])
         ]
 
-        async def on_read(reader, on_data):
+        async def on_read_sock(sock, on_data):
+            while True:
+                data = await loop.sock_recv(sock, MAX_READ)
+                await on_data(data)
+
+        async def on_read_stream_reader(reader, on_data):
             while not reader.at_eof():
                 data = await reader.read(MAX_READ)
-                on_data(data)
+                await on_data(data)
 
         await asyncio.gather(
-            on_read(client_reader, processors[0].c2s_from_outside),
-            on_read(server_reader, processors[0].s2c_from_outside),
+            on_read_sock(client_sock, processors[0].c2s_from_outside),
+            on_read_stream_reader(server_reader, processors[0].s2c_from_outside),
         )
     finally:
-        client_writer.close()
+        client_sock.close()
         server_writer.close()
 
 
@@ -401,14 +406,16 @@ def flatten(list_to_flatten):
 async def async_main():
     loop = asyncio.get_event_loop()
 
-    def protocol_factory():
-        reader = asyncio.StreamReader()
-        protocol = asyncio.StreamReaderProtocol(reader, client_connected_cb=handle_client)
-        return protocol
-
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
-    sock.bind(("0.0.0.0", 7777))
-    await loop.create_server(protocol_factory, sock=sock)
+    sock.setblocking(False)
+    sock.bind(("", 7777))
+    sock.listen(socket.IPPROTO_TCP)
+
+    while True:
+        client_sock, _ = await loop.sock_accept(sock)
+        # Unsure if this is needed
+        client_sock.setblocking(False)
+        await handle_client(loop, client_sock)
 
 
 def main():
