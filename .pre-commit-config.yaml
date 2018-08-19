@@ -1,3 +1,16 @@
+# We run pylint from local env, to ensure modules can be found
+- repo: local
+  hooks:
+    - id: pylint
+      name: pylint
+      entry: python -m pylint.__main__
+      language: system
+      types: [python]
+      args:
+        - --include-naming-hint=yes
+        - --ignore-imports=yes
+        - --disable=duplicate-code
+        - --disable=missing-docstring
 - repo: https://github.com/ambv/black
   rev: stable
   hooks:
