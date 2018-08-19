@@ -127,17 +127,17 @@ def postgress_message_interceptor():
 
     salt = None
 
-    def md5(data):
-        return hashlib.md5(data).hexdigest().encode("utf-8")
-
-    def md5_salted(password, username, salf):
-        return md5(md5(password + username) + salt)
-
     def log_messages(logging_title, messages):
         for message in messages:
             print(str(logging_title) + " -----------------")
             print(message)
             yield message
+
+    def md5(data):
+        return hashlib.md5(data).hexdigest().encode("utf-8")
+
+    def md5_salted(password, username, salf):
+        return md5(md5(password + username) + salt)
 
     def md5_incorrect():
         return md5(secrets.token_bytes(32))
