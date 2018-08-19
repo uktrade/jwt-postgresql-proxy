@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import hashlib
+import re
 import secrets
 import struct
 
@@ -112,23 +113,53 @@ def postgres_message_parser(num_startup_messages):
 
 
 def postgres_auth_interceptor():
-    # Experimental replacement of the password
+    # Experimental replacement of the username & password
     correct_client_password = b"proxy_mysecret"
     correct_server_password = b"mysecret"
 
-    # This would have to be read from the messages?
-    username = b"postgres"
+    correct_client_username = b"proxy_postgres"
+
+    # This could be returned back to the client, so it should _not_ be treated as secret
+    correct_server_username = b"postgres"
 
     server_salt = None
     client_salt = None
 
+    from_client_count = 0
+    from_server_count = 0
+
     def log_message(logging_title, message):
         print(f"[{logging_title}] " + str(message))
 
+    def to_server_startup(message):
+        # The startup message seems to have an extra null character at the beginning,
+        # which the documentation doesn't suggest
+
+        pairs_list = re.compile(b"\x00([^\x00]+)\x00([^\x00]*)").findall(message.payload)
+        pairs = dict(pairs_list)
+        incorrect_user = md5(secrets.token_bytes(32))
+        client_username = pairs[b'user']
+        server_username = \
+            correct_server_username if client_username == correct_client_username else \
+            incorrect_user
+
+        pairs_to_send = {**pairs, b'user': server_username}
+        new_payload = b"\x00" + b"".join(flatten(
+            (key, b"\x00", pairs_to_send[key], b"\x00")
+            for key, _ in pairs_list
+        )) + b"\x00"
+        new_payload_length_bytes = pack_length(len(new_payload))
+
+        return message._replace(payload_length=new_payload_length_bytes, payload=new_payload)
+
     def to_server_md5_response(message):
         client_md5 = message.payload[3:-1]
-        correct_client_md5 = md5_salted(correct_client_password, username, client_salt)
-        correct_server_md5 = md5_salted(correct_server_password, username, server_salt)
+        correct_client_md5 = md5_salted(
+            correct_client_password, correct_client_username, client_salt,
+        )
+        correct_server_md5 = md5_salted(
+            correct_server_password, correct_server_username, server_salt,
+        )
         md5_incorrect = md5(secrets.token_bytes(32))
         server_md5 = \
             correct_server_md5 if client_md5 == correct_client_md5 else \
@@ -136,10 +167,16 @@ def postgres_auth_interceptor():
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
 
     def client_to_server(messages):
+        nonlocal from_client_count
+
         for message in messages:
+            from_client_count += 1
+
             log_message("client->proxy", message)
+            is_startup = message.type == b"" and from_client_count == 2
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
             message_to_yield = \
+                to_server_startup(message) if is_startup else \
                 to_server_md5_response(message) if is_md5_response else \
                 message
             log_message("proxy->server", message_to_yield)
@@ -149,10 +186,13 @@ def postgres_auth_interceptor():
         return message._replace(payload=message.payload[0:4] + client_salt)
 
     def server_to_client(messages):
+        nonlocal from_server_count
         nonlocal server_salt
         nonlocal client_salt
 
         for message in messages:
+            from_server_count += 1
+
             log_message("server->proxy", message)
             is_md5_request = message.type == b"R" and message.payload[0:4] == b"\x00\x00\x00\x05"
             server_salt, client_salt = \
@@ -199,6 +239,10 @@ async def pipe_intercepted(reader, writer, interceptor, num_startup_messages):
 
 def unpack_length(length_bytes):
     return struct.unpack(PAYLOAD_LENGTH_FORMAT, length_bytes)[0] - PAYLOAD_LENGTH_LENGTH
+
+
+def pack_length(length):
+    return struct.pack(PAYLOAD_LENGTH_FORMAT, length + PAYLOAD_LENGTH_LENGTH)
 
 
 def md5(data):
