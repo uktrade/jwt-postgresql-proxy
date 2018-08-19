@@ -277,7 +277,7 @@ async def handle_client(client_reader, client_writer):
     try:
         server_reader, server_writer = await asyncio.open_connection("127.0.0.1", 5432)
 
-        # Processors are akin to middlewares in a typical HTTP server. They are adde,
+        # Processors are akin to middlewares in a typical HTTP server. They are added,
         # "outermost" first, and can process the response of "inner" processors
         #
         # However, they are more complex since they...
