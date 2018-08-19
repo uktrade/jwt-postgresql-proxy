@@ -133,15 +133,6 @@ def postgress_message_interceptor():
             print(message)
             yield message
 
-    def md5(data):
-        return hashlib.md5(data).hexdigest().encode("utf-8")
-
-    def md5_salted(password, username, salt):
-        return md5(md5(password + username) + salt)
-
-    def md5_incorrect():
-        return md5(secrets.token_bytes(32))
-
     def client_to_server(messages):
         for message in log_messages("client", messages):
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
@@ -167,6 +158,18 @@ def postgress_message_interceptor():
             yield message
 
     return client_to_server, server_to_client
+
+
+def md5(data):
+    return hashlib.md5(data).hexdigest().encode("utf-8")
+
+
+def md5_salted(password, username, salt):
+    return md5(md5(password + username) + salt)
+
+
+def md5_incorrect():
+    return md5(secrets.token_bytes(32))
 
 
 def flatten(list_to_flatten):
