@@ -302,7 +302,10 @@ def echo_processor(to_c2s_outer, _, to_s2c_outer, __):
 
 async def handle_client(loop, client_sock):
     try:
-        server_reader, server_writer = await asyncio.open_connection("127.0.0.1", 5432)
+        server_sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
+                                    proto=socket.IPPROTO_TCP)
+        server_sock.setblocking(False)
+        await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
 
         # Processors are akin to middlewares in a typical HTTP server. They are added,
         # "outermost" first, and can process the response of "inner" processors
@@ -322,7 +325,7 @@ async def handle_client(loop, client_sock):
         # - Can send multiple messages, not just the one response to a request
 
         async def edge_to_c2s_outer(data):
-            server_writer.write(data)
+            await loop.sock_sendall(server_sock, data)
 
         async def edge_to_s2c_outer(data):
             await loop.sock_sendall(client_sock, data)
@@ -369,18 +372,13 @@ async def handle_client(loop, client_sock):
                 data = await loop.sock_recv(sock, MAX_READ)
                 await on_data(data)
 
-        async def on_read_stream_reader(reader, on_data):
-            while not reader.at_eof():
-                data = await reader.read(MAX_READ)
-                await on_data(data)
-
         await asyncio.gather(
             on_read_sock(client_sock, processors[0].c2s_from_outside),
-            on_read_stream_reader(server_reader, processors[0].s2c_from_outside),
+            on_read_sock(server_sock, processors[0].s2c_from_outside),
         )
     finally:
         client_sock.close()
-        server_writer.close()
+        server_sock.close()
 
 
 def unpack_length(length_bytes):
