@@ -138,7 +138,8 @@ def postgress_message_interceptor():
         client_md5 = message.payload[3:-1]
         correct_client_md5 = md5_salted(correct_client_password, username, client_salt)
         correct_server_md5 = md5_salted(correct_server_password, username, server_salt)
-        server_md5 = correct_server_md5 if client_md5 == correct_client_md5 else md5_incorrect()
+        md5_incorrect = md5(secrets.token_bytes(32))
+        server_md5 = correct_server_md5 if client_md5 == correct_client_md5 else md5_incorrect
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
 
     def client_to_server(messages):
@@ -209,10 +210,6 @@ def md5(data):
 
 def md5_salted(password, username, salt):
     return md5(md5(password + username) + salt)
-
-
-def md5_incorrect():
-    return md5(secrets.token_bytes(32))
 
 
 def flatten(list_to_flatten):
