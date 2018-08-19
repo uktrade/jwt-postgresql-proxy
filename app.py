@@ -150,8 +150,7 @@ def postgress_message_interceptor():
 
         for message in log_messages("server", messages):
             is_md5_request = message.type == b"R" and message.payload[0:4] == b"\x00\x00\x00\x05"
-            if is_md5_request:
-                server_salt = message.payload[4:8]
+            server_salt = message.payload[4:8] if is_md5_request else server_salt
             yield message
 
     return client_to_server, server_to_client
