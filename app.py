@@ -27,9 +27,6 @@ def postgres_message_parser(num_startup_messages):
     def push_data(incoming_data):
         data_buffer.extend(incoming_data)
 
-    def unpack_length(length_bytes):
-        return struct.unpack(PAYLOAD_LENGTH_FORMAT, length_bytes)[0] - PAYLOAD_LENGTH_LENGTH
-
     def attempt_pop_message(type_length):
         """ Returns the next, possibly partly-received, message in data_buffer
 
@@ -198,6 +195,10 @@ async def pipe_intercepted(reader, writer, interceptor, num_startup_messages):
         messages = message_parser(data)
         intercepted_messages = interceptor(messages)
         writer.write(b"".join(flatten(intercepted_messages)))
+
+
+def unpack_length(length_bytes):
+    return struct.unpack(PAYLOAD_LENGTH_FORMAT, length_bytes)[0] - PAYLOAD_LENGTH_LENGTH
 
 
 def md5(data):
