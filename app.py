@@ -16,7 +16,11 @@ LATER_MESSAGE_TYPE_LENGTH = 1
 PAYLOAD_LENGTH_LENGTH = 4
 PAYLOAD_LENGTH_FORMAT = "!L"
 
+# This works when N is a response to aSSL request, but will probably go wrong
+# if the server actually sends a Notice response, since that will be followed
+# by data
 NO_DATA_TYPE = b"N"
+SSL_REQUEST_PAYLOAD = B"\x04\xd2\x16/"
 
 Message = collections.namedtuple("Message", ("type", "payload_length", "payload"))
 
@@ -125,9 +129,6 @@ def postgres_auth_interceptor():
     server_salt = None
     client_salt = None
 
-    from_client_count = 0
-    from_server_count = 0
-
     def log_message(logging_title, message):
         print(f"[{logging_title}] " + str(message))
 
@@ -167,13 +168,9 @@ def postgres_auth_interceptor():
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
 
     def client_to_server(messages):
-        nonlocal from_client_count
-
         for message in messages:
-            from_client_count += 1
-
             log_message("client->proxy", message)
-            is_startup = message.type == b"" and from_client_count == 2
+            is_startup = message.type == b"" and message.payload != SSL_REQUEST_PAYLOAD
             is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
             message_to_yield = \
                 to_server_startup(message) if is_startup else \
@@ -186,13 +183,10 @@ def postgres_auth_interceptor():
         return message._replace(payload=message.payload[0:4] + client_salt)
 
     def server_to_client(messages):
-        nonlocal from_server_count
         nonlocal server_salt
         nonlocal client_salt
 
         for message in messages:
-            from_server_count += 1
-
             log_message("server->proxy", message)
             is_md5_request = message.type == b"R" and message.payload[0:4] == b"\x00\x00\x00\x05"
             server_salt, client_salt = \
