@@ -32,6 +32,33 @@ Processor = collections.namedtuple("Processor", (
     "c2s_from_outside", "c2s_from_inside", "s2c_from_outside", "s2c_from_inside"))
 
 
+def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c_inner):
+
+    async def on_read_sock(sock, on_data):
+        while True:
+            data = await loop.sock_recv(sock, MAX_READ)
+            await on_data(data)
+
+    loop.create_task(asyncio.gather(
+        on_read_sock(client_sock, to_c2s_inner),
+        on_read_sock(server_sock, to_s2c_inner),
+    ))
+
+    async def c2s_from_outside(_):
+        pass
+
+    async def c2s_from_inside(data):
+        await loop.sock_sendall(server_sock, data)
+
+    async def s2c_from_outside(_):
+        pass
+
+    async def s2c_from_inside(data):
+        await loop.sock_sendall(client_sock, data)
+
+    return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
+
+
 def postgres_disable_ssl_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inner):
 
     possible_ssl_request_message = b""
@@ -324,12 +351,6 @@ async def handle_client(loop, client_sock):
         #
         # - Can send multiple messages, not just the one response to a request
 
-        async def edge_to_c2s_outer(data):
-            await loop.sock_sendall(server_sock, data)
-
-        async def edge_to_s2c_outer(data):
-            await loop.sock_sendall(client_sock, data)
-
         async def to_c2s_inner(i, data):
             return await processors[i + 1].c2s_from_outside(data)
 
@@ -342,11 +363,10 @@ async def handle_client(loop, client_sock):
         async def to_s2c_outer(i, data):
             return await processors[i - 1].s2c_from_inside(data)
 
-        outermost_processor = Processor(
-            c2s_from_outside=partial(to_c2s_inner, 0),
-            c2s_from_inside=edge_to_c2s_outer,
-            s2c_from_outside=partial(to_s2c_inner, 0),
-            s2c_from_inside=edge_to_s2c_outer,
+        outermost_processor = postgres_root_processor(
+            loop, client_sock, server_sock,
+            to_c2s_inner=partial(to_c2s_inner, 0),
+            to_s2c_inner=partial(to_s2c_inner, 0)
         )
 
         processors = [
@@ -367,15 +387,6 @@ async def handle_client(loop, client_sock):
             ])
         ]
 
-        async def on_read_sock(sock, on_data):
-            while True:
-                data = await loop.sock_recv(sock, MAX_READ)
-                await on_data(data)
-
-        loop.create_task(asyncio.gather(
-            on_read_sock(client_sock, outermost_processor.c2s_from_outside),
-            on_read_sock(server_sock, outermost_processor.s2c_from_outside),
-        ))
         await asyncio.Future()
 
     finally:
@@ -403,9 +414,7 @@ def flatten(list_to_flatten):
     return (item for sublist in list_to_flatten for item in sublist)
 
 
-async def async_main():
-    loop = asyncio.get_event_loop()
-
+async def async_main(loop):
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     sock.setblocking(False)
     sock.bind(("", 7777))
@@ -420,7 +429,7 @@ async def async_main():
 
 def main():
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_main())
+    loop.run_until_complete(async_main(loop))
     loop.run_forever()
 
 
