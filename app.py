@@ -113,11 +113,7 @@ def postgres_message_parser(num_startup_messages):
     return extract_messages
 
 
-def postgress_message_interceptor():
-    """ Keeps a track of the passed messages, in order to transform and log them.
-    For example, to intercept password request/responses
-    """
-
+def postgres_authentication_interceptor():
     # Experimental replacement of the password
     correct_client_password = b"proxy_mysecret"
     correct_server_password = b"mysecret"
@@ -177,7 +173,7 @@ async def handle_client(client_reader, client_writer):
         server_reader, server_writer = await asyncio.open_connection("127.0.0.1", 5432)
 
         client_to_server_interceptor, server_to_client_interceptor = (
-            postgress_message_interceptor()
+            postgres_authentication_interceptor()
         )
 
         await asyncio.gather(
