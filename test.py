@@ -1,8 +1,9 @@
 import asyncio
 import aiopg
 
+
 async def main():
-    dsn = 'dbname=test user=postgres password=proxy_mysecret host=127.0.0.1 port=7777'
+    dsn = "dbname=test user=postgres password=proxy_mysecret host=127.0.0.1 port=7777"
 
     pool = await aiopg.create_pool(dsn)
     async with pool.acquire() as conn:
@@ -13,7 +14,8 @@ async def main():
                 ret.append(row)
             assert ret == [(1,)]
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
     loop.run_forever()

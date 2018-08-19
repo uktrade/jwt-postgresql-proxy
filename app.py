@@ -13,11 +13,12 @@ LATER_MESSAGE_TYPE_LENGTH = 1
 
 # The length of messages itself takes 4 bytes
 PAYLOAD_LENGTH_LENGTH = 4
-PAYLOAD_LENGTH_FORMAT = '!L'
+PAYLOAD_LENGTH_FORMAT = "!L"
 
-NO_DATA_TYPE = b'N'
+NO_DATA_TYPE = b"N"
 
-Message = collections.namedtuple('Message', ('type', 'payload_length', 'payload'))
+Message = collections.namedtuple("Message", ("type", "payload_length", "payload"))
+
 
 def postgres_message_parser(num_startup_messages):
     data_buffer = bytearray()
@@ -27,45 +28,57 @@ def postgres_message_parser(num_startup_messages):
         data_buffer.extend(incoming_data)
 
     def attempt_pop_message(type_length):
-        ''' Returns the next, possibly partly-received, message in data_buffer
+        """ Returns the next, possibly partly-received, message in data_buffer
 
         If the message is complete, then it's removed from the data buffer, and
         the return tuple's first component is True.
-        '''
+        """
         type_slice = slice(0, type_length)
         type_bytes = data_buffer[type_slice]
         has_type_bytes = len(type_bytes) == type_length
 
         # The documentation is a bit wrong: the 'N' type for no data, is _not_ followed
         # by a length
-        payload_length_length = \
-            0 if has_type_bytes and type_bytes == NO_DATA_TYPE else \
-            PAYLOAD_LENGTH_LENGTH
+        payload_length_length = (
+            0 if has_type_bytes and type_bytes == NO_DATA_TYPE else PAYLOAD_LENGTH_LENGTH
+        )
 
         payload_length_slice = slice(type_length, type_length + payload_length_length)
         payload_length_bytes = data_buffer[payload_length_slice]
-        has_payload_length_bytes = has_type_bytes and len(payload_length_bytes) == payload_length_length
+        has_payload_length_bytes = (
+            has_type_bytes and len(payload_length_bytes) == payload_length_length
+        )
 
         # The protocol specifies that the message length specified _includes_ MESSAGE_LENGTH_LENGTH,
         # so we subtract to get the actual length of the message.
-        payload_length = \
-            (struct.unpack(PAYLOAD_LENGTH_FORMAT, payload_length_bytes)[0] - payload_length_length) if has_payload_length_bytes and payload_length_length else \
-            0
+        payload_length = (
+            (struct.unpack(PAYLOAD_LENGTH_FORMAT, payload_length_bytes)[0] - payload_length_length)
+            if has_payload_length_bytes and payload_length_length
+            else 0
+        )
 
-        payload_slice = slice(type_length + payload_length_length, type_length + payload_length_length + payload_length)
+        payload_slice = slice(
+            type_length + payload_length_length,
+            type_length + payload_length_length + payload_length,
+        )
         payload_bytes = data_buffer[payload_slice]
         has_payload_bytes = has_payload_length_bytes and len(payload_bytes) == payload_length
 
-        to_remove = \
-            slice(0, type_length + PAYLOAD_LENGTH_LENGTH + payload_length) if has_payload_bytes else \
-            slice(0, 0)
+        to_remove = (
+            slice(0, type_length + PAYLOAD_LENGTH_LENGTH + payload_length)
+            if has_payload_bytes
+            else slice(0, 0)
+        )
 
         data_buffer[to_remove] = bytearray()
 
-        return has_payload_bytes, Message(bytes(type_bytes), bytes(payload_length_bytes), bytes(payload_bytes))
+        return (
+            has_payload_bytes,
+            Message(bytes(type_bytes), bytes(payload_length_bytes), bytes(payload_bytes)),
+        )
 
     def extract_messages(data):
-        ''' Yields a generator of Messages, each Message being the raw bytes of
+        """ Yields a generator of Messages, each Message being the raw bytes of
         components of Postgres messages passed in data, or combined with that of
         previous calls where the data passed ended with an incomplete message
 
@@ -78,7 +91,7 @@ def postgres_message_parser(num_startup_messages):
         Each component is optional, and will be the empty byte if its not present
         Each Message is so constructed so that full original bytes can be retrieved
         by just concatanating them together, to make proxying easier
-        '''
+        """
         push_data(data)
 
         nonlocal messages_popped
@@ -86,9 +99,9 @@ def postgres_message_parser(num_startup_messages):
         while True:
             pop_startup_message = messages_popped < num_startup_messages
 
-            type_length = \
-                START_MESSAGE_TYPE_LENGTH if pop_startup_message else \
-                LATER_MESSAGE_TYPE_LENGTH
+            type_length = (
+                START_MESSAGE_TYPE_LENGTH if pop_startup_message else LATER_MESSAGE_TYPE_LENGTH
+            )
             has_popped, message = attempt_pop_message(type_length)
 
             if not has_popped:
@@ -101,28 +114,28 @@ def postgres_message_parser(num_startup_messages):
 
 
 def postgress_message_interceptor():
-    ''' Keeps a track of the passed messages, in order to transform them.
+    """ Keeps a track of the passed messages, in order to transform them.
     For example, to intercept password request/responses
-    '''
+    """
 
     # Experimental replacement of the password
-    correct_client_password = b'proxy_mysecret'
-    correct_server_password = b'mysecret'
+    correct_client_password = b"proxy_mysecret"
+    correct_server_password = b"mysecret"
 
     # This would have to be read from the messages?
-    username = b'postgres'
+    username = b"postgres"
 
     salt = None
 
     def md5(data):
-        return hashlib.md5(data).hexdigest().encode('utf-8')
+        return hashlib.md5(data).hexdigest().encode("utf-8")
 
     def md5_salted(password, username, salf):
         return md5(md5(password + username) + salt)
 
     def log_messages(logging_title, messages):
         for message in messages:
-            print(str(logging_title) + ' -----------------')
+            print(str(logging_title) + " -----------------")
             print(message)
             yield message
 
@@ -130,25 +143,25 @@ def postgress_message_interceptor():
         return md5(secrets.token_bytes(32))
 
     def client_to_server(messages):
-        for message in log_messages('client', messages):
-            is_md5_response = message.type == b'p' and message.payload[0:3] == b'md5'
+        for message in log_messages("client", messages):
+            is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
             if is_md5_response:
                 client_md5 = message.payload[3:-1]
                 correct_client_md5 = md5_salted(correct_client_password, username, salt)
                 correct_server_md5 = md5_salted(correct_server_password, username, salt)
 
-                server_md5 = \
-                    correct_server_md5 if client_md5 == correct_client_md5 else \
-                    md5_incorrect()
-                message = message._replace(payload=b'md5' + server_md5 + b'\x00')
-            
+                server_md5 = (
+                    correct_server_md5 if client_md5 == correct_client_md5 else md5_incorrect()
+                )
+                message = message._replace(payload=b"md5" + server_md5 + b"\x00")
+
             yield message
 
     def server_to_client(messages):
         nonlocal salt
 
-        for message in log_messages('server', messages):
-            is_md5_request = message.type == b'R' and message.payload[0:4] == b'\x00\x00\x00\x05'
+        for message in log_messages("server", messages):
+            is_md5_request = message.type == b"R" and message.payload[0:4] == b"\x00\x00\x00\x05"
             if is_md5_request:
                 salt = message.payload[4:8]
             yield message
@@ -157,26 +170,33 @@ def postgress_message_interceptor():
 
 
 def flatten(list_to_flatten):
-    return (
-        item
-        for sublist in list_to_flatten
-        for item in sublist
-    )
+    return (item for sublist in list_to_flatten for item in sublist)
+
 
 async def main():
     async def handle_client(client_reader, client_writer):
         try:
-            server_reader, server_writer = await asyncio.open_connection('127.0.0.1', 5432)
+            server_reader, server_writer = await asyncio.open_connection("127.0.0.1", 5432)
 
-            client_to_server_interceptor, server_to_client_interceptor = postgress_message_interceptor()
+            client_to_server_interceptor, server_to_client_interceptor = (
+                postgress_message_interceptor()
+            )
 
             await asyncio.gather(
                 # The documentation suggests there is one startup packets sent from
                 # the client, but there are actually two
-                pipe_intercepted(client_reader, server_writer, client_to_server_interceptor,
-                                 num_startup_messages=2),
-                pipe_intercepted(server_reader, client_writer, server_to_client_interceptor,
-                                 num_startup_messages=0),
+                pipe_intercepted(
+                    client_reader,
+                    server_writer,
+                    client_to_server_interceptor,
+                    num_startup_messages=2,
+                ),
+                pipe_intercepted(
+                    server_reader,
+                    client_writer,
+                    server_to_client_interceptor,
+                    num_startup_messages=0,
+                ),
             )
         finally:
             client_writer.close()
@@ -188,11 +208,12 @@ async def main():
             data = await reader.read(MAX_READ)
             messages = message_parser(data)
             intercepted_messages = interceptor(messages)
-            writer.write(b''.join(flatten(intercepted_messages)))
+            writer.write(b"".join(flatten(intercepted_messages)))
 
-    server = await asyncio.start_server(handle_client, '0.0.0.0', 7777)
+    server = await asyncio.start_server(handle_client, "0.0.0.0", 7777)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
     loop.run_forever()
