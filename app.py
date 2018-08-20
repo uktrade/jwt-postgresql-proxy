@@ -10,23 +10,19 @@ import socket
 import ssl
 import struct
 
-# Processors are akin to middlewares in a typical HTTP server. They are added,
-# "outermost" first, and can process the response of "inner" processors
+# Architected by nested processors, akin to middlewares in a typical HTTP
+# server. They are added, "outermost" first, and can process the response
+# of "inner" processors.
 #
-# However, they are more complex since they...
+# However, they are different in that they can send data...
 #
-# - Can send...
-#   - data to an inner processor destined for the client,
-#     typically in response to data from an outer processor from the server
-#   - data to an inner processor destined for the server,
-#     typically in response to data from an outer processor from the client
-#   - data to an outer processor destined for the client,
-#     typically in response to data from an inner processor from the server
-#   - data to an outer processor destined for the server,
-#     typically in response to data from an inner processor from the client
-#
-# - Can send multiple messages, not just the one response to a request
-
+# - to an inner processor destined for the client
+# - to an inner processor destined for the server
+# - to an outer processor destined for the client
+# - to an outer processor destined for the server
+# - multiple messages, not just the one response to a request
+# - to either client or server at any time, or choose _not_ to if 
+#   conditions haven't been met, such as authentication
 
 # How much we read at once. Messages _can_ be larger than this
 # Often good to test this set to something really low to make
