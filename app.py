@@ -34,8 +34,24 @@ Processor = collections.namedtuple("Processor", (
 
 def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c_inner, **_):
 
+    possible_ssl_request = b""
+
     async def c2s_from_outside(data):
-        await to_c2s_inner(data)
+        nonlocal possible_ssl_request
+
+        num_remaining = len(SSL_REQUEST_MESSAGE) - len(possible_ssl_request)
+        possible_ssl_request, non_ssl_request = \
+            possible_ssl_request + data[0:num_remaining], data[num_remaining:]
+
+        if not num_remaining:
+            await to_c2s_inner(non_ssl_request)
+        elif num_remaining and possible_ssl_request == SSL_REQUEST_MESSAGE:
+            print(f'[client->proxy] {SSL_REQUEST_MESSAGE}')
+            print(f'[proxy->client] {SSL_REQUEST_RESPONSE}')
+            await s2c_from_inside(SSL_REQUEST_RESPONSE)
+            await to_c2s_inner(non_ssl_request)
+        elif num_remaining and len(possible_ssl_request) == len(SSL_REQUEST_MESSAGE):
+            await to_c2s_inner(possible_ssl_request + non_ssl_request)
 
     async def c2s_from_inside(data):
         await loop.sock_sendall(server_sock, data)
@@ -60,39 +76,6 @@ def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c
         on_read_sock(client_sock, c2s_from_outside),
         on_read_sock(server_sock, s2c_from_outside),
     ))
-
-    return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
-
-
-def postgres_disable_ssl_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inner):
-
-    possible_ssl_request = b""
-
-    async def c2s_from_outside(data):
-        nonlocal possible_ssl_request
-
-        num_remaining = len(SSL_REQUEST_MESSAGE) - len(possible_ssl_request)
-        possible_ssl_request, non_ssl_request = \
-            possible_ssl_request + data[0:num_remaining], data[num_remaining:]
-
-        if not num_remaining:
-            await to_c2s_inner(non_ssl_request)
-        elif num_remaining and possible_ssl_request == SSL_REQUEST_MESSAGE:
-            print(f'[client->proxy] {SSL_REQUEST_MESSAGE}')
-            print(f'[proxy->client] {SSL_REQUEST_RESPONSE}')
-            await to_s2c_outer(SSL_REQUEST_RESPONSE)
-            await to_c2s_inner(non_ssl_request)
-        elif num_remaining and len(possible_ssl_request) == len(SSL_REQUEST_MESSAGE):
-            await to_c2s_inner(possible_ssl_request + non_ssl_request)
-
-    async def c2s_from_inside(data):
-        await to_c2s_outer(data)
-
-    async def s2c_from_outside(data):
-        await to_s2c_inner(data)
-
-    async def s2c_from_inside(data):
-        await to_s2c_outer(data)
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
@@ -381,7 +364,6 @@ async def handle_client(loop, client_sock):
         )
         for i, processor_constructor in enumerate([
             outermost_processor_constructor,
-            postgres_disable_ssl_processor,
             postgres_parser_processor,
             postgres_log_processor,
             postgres_auth_processor,
