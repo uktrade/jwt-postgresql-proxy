@@ -47,10 +47,14 @@ def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c
         await loop.sock_sendall(client_sock, data)
 
     async def on_read_sock(sock, on_data):
-        while True:
-            data = await loop.sock_recv(sock, MAX_READ)
-            if data:
-                await on_data(data)
+        try:
+            while True:
+                data = await loop.sock_recv(sock, MAX_READ)
+                if data:
+                    await on_data(data)
+        except BaseException:
+            client_sock.close()
+            server_sock.close()
 
     asyncio.ensure_future(asyncio.gather(
         on_read_sock(client_sock, c2s_from_outside),
