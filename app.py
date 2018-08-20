@@ -276,9 +276,9 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
 
     async def c2s_from_outside(messages):
         await to_c2s_inner([
-            (to_server_startup(message) if is_startup else \
+            to_server_startup(message) if is_startup else \
             to_server_md5_response(message) if is_md5_response else \
-            message)
+            message
             for message in messages
             for is_startup in (message.type == b"",)
             for is_md5_response in (message.type == b"p" and message.payload[0:3] == b"md5",)
