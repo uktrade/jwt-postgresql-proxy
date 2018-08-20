@@ -10,6 +10,24 @@ import socket
 import ssl
 import struct
 
+# Processors are akin to middlewares in a typical HTTP server. They are added,
+# "outermost" first, and can process the response of "inner" processors
+#
+# However, they are more complex since they...
+#
+# - Can send...
+#   - data to an inner processor destined for the client,
+#     typically in response to data from an outer processor from the server
+#   - data to an inner processor destined for the server,
+#     typically in response to data from an outer processor from the client
+#   - data to an outer processor destined for the client,
+#     typically in response to data from an inner processor from the server
+#   - data to an outer processor destined for the server,
+#     typically in response to data from an inner processor from the client
+#
+# - Can send multiple messages, not just the one response to a request
+
+
 # How much we read at once. Messages _can_ be larger than this
 # Often good to test this set to something really low to make
 # sure the logic works for network reads that return only partial
@@ -360,23 +378,6 @@ async def handle_client(loop, client_sock):
                                 proto=socket.IPPROTO_TCP)
     server_sock.setblocking(False)
     await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
-
-    # Processors are akin to middlewares in a typical HTTP server. They are added,
-    # "outermost" first, and can process the response of "inner" processors
-    #
-    # However, they are more complex since they...
-    #
-    # - Can send...
-    #   - data to an inner processor destined for the client,
-    #     typically in response to data from an outer processor from the server
-    #   - data to an inner processor destined for the server,
-    #     typically in response to data from an outer processor from the client
-    #   - data to an outer processor destined for the client,
-    #     typically in response to data from an inner processor from the server
-    #   - data to an outer processor destined for the server,
-    #     typically in response to data from an inner processor from the client
-    #
-    # - Can send multiple messages, not just the one response to a request
 
     async def to_c2s_inner(i, data):
         return await processors[i + 1].c2s_from_outside(data)
