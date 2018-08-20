@@ -62,20 +62,23 @@ def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c
     async def s2c_from_inside(data):
         await loop.sock_sendall(client_sock, data)
 
-    async def on_read_sock(get_sock, on_data):
+    def on_read_available(sock, on_data):
+        loop.create_task(_on_read_available(sock, on_data))
+
+    async def _on_read_available(sock, on_data):
         try:
             while True:
-                data = await loop.sock_recv(get_sock(), MAX_READ)
+                data = await loop.sock_recv(sock, MAX_READ)
                 if data:
                     await on_data(data)
+                else:
+                    break
         except BaseException:
             client_sock.close()
             server_sock.close()
 
-    asyncio.ensure_future(asyncio.gather(
-        on_read_sock(lambda: client_sock, c2s_from_outside),
-        on_read_sock(lambda: server_sock, s2c_from_outside),
-    ))
+    loop.add_reader(client_sock.fileno(), partial(on_read_available, client_sock, c2s_from_outside))
+    loop.add_reader(server_sock.fileno(), partial(on_read_available, server_sock, s2c_from_outside))
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
