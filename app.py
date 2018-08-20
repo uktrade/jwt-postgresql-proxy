@@ -120,10 +120,7 @@ def postgres_root_processor(loop, non_ssl_client_sock, server_sock, to_c2s_inner
         except ssl.SSLWantReadError:
             pass
         except BaseException:
-            if ssl_client_sock:
-                ssl_client_sock.close()
-            non_ssl_client_sock.close()
-            server_sock.close()
+            close_all_connections()
 
     # The SSL and non-TLS sockets share the same fileno, so we only
     # have to add the reader for one, and it still works after TLS upgrade
@@ -131,6 +128,12 @@ def postgres_root_processor(loop, non_ssl_client_sock, server_sock, to_c2s_inner
                     partial(on_read_available, get_client_sock, c2s_from_outside))
     loop.add_reader(server_sock.fileno(),
                     partial(on_read_available, lambda: server_sock, s2c_from_outside))
+
+    def close_all_connections():
+        if ssl_client_sock:
+            ssl_client_sock.close()
+        non_ssl_client_sock.close()
+        server_sock.close()
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
