@@ -1,4 +1,4 @@
-# postgres-audit-proxy
+# postgres-basion
 Prototype for a Postgres proxy that can be used for auditing
 
 ## Development environment
