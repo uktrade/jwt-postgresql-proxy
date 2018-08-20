@@ -275,14 +275,14 @@ def postgres_auth_processor(to_c2s_outer, to_c2s_inner, to_s2c_outer, to_s2c_inn
         return message._replace(payload=b"md5" + server_md5 + b"\x00")
 
     async def c2s_from_outside(messages):
-        for message in messages:
-            is_startup = message.type == b""
-            is_md5_response = message.type == b"p" and message.payload[0:3] == b"md5"
-            message_to_yield = \
-                to_server_startup(message) if is_startup else \
-                to_server_md5_response(message) if is_md5_response else \
-                message
-            await to_c2s_inner([message_to_yield])
+        await to_c2s_inner([
+            (to_server_startup(message) if is_startup else \
+            to_server_md5_response(message) if is_md5_response else \
+            message)
+            for message in messages
+            for is_startup in (message.type == b"",)
+            for is_md5_response in (message.type == b"p" and message.payload[0:3] == b"md5",)
+        ])
 
     async def c2s_from_inside(messages):
         await to_c2s_outer(messages)
