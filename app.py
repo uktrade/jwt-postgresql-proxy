@@ -49,8 +49,7 @@ Processor = collections.namedtuple("Processor", (
 
 def postgres_root_processor(loop, non_ssl_client_sock, server_sock, to_c2s_inner, to_s2c_inner,
                             **_):
-    # For now, it does support both ssl and non ssl. Suspect will want to move
-    # to _only_ transporting using encryption
+    allow_data_to_next_processor = False
     possible_ssl_request = b""
 
     ssl_client_sock = None
@@ -79,21 +78,23 @@ def postgres_root_processor(loop, non_ssl_client_sock, server_sock, to_c2s_inner
         return ssl_client_sock if ssl_client_sock else non_ssl_client_sock
 
     async def c2s_from_outside(data):
+        nonlocal allow_data_to_next_processor
         nonlocal possible_ssl_request
 
         num_remaining = len(SSL_REQUEST_MESSAGE) - len(possible_ssl_request)
         possible_ssl_request, non_ssl_request = \
             possible_ssl_request + data[0:num_remaining], data[num_remaining:]
 
-        if not num_remaining:
+        if allow_data_to_next_processor:
             await to_c2s_inner(non_ssl_request)
         elif num_remaining and possible_ssl_request == SSL_REQUEST_MESSAGE:
             print(f'[client->proxy] {SSL_REQUEST_MESSAGE}')
             print(f'[proxy->client] {SSL_REQUEST_RESPONSE}')
+            allow_data_to_next_processor = True
             await s2c_from_inside(SSL_REQUEST_RESPONSE)
             await init_client_tls()
         elif num_remaining and len(possible_ssl_request) == len(SSL_REQUEST_MESSAGE):
-            await to_c2s_inner(possible_ssl_request + non_ssl_request)
+            close_all_connections()
 
     async def c2s_from_inside(data):
         await loop.sock_sendall(server_sock, data)
