@@ -7,6 +7,7 @@ import hashlib
 import re
 import secrets
 import socket
+import ssl
 import struct
 
 # How much we read at once. Messages _can_ be larger than this
@@ -24,7 +25,7 @@ PAYLOAD_LENGTH_LENGTH = 4
 PAYLOAD_LENGTH_FORMAT = "!L"
 
 SSL_REQUEST_MESSAGE = B"\x00\x00\x00\x08\x04\xd2\x16/"
-SSL_REQUEST_RESPONSE = B"N"
+SSL_REQUEST_RESPONSE = B"S"
 
 Message = collections.namedtuple("Message", (
     "type", "payload_length", "payload"))
@@ -32,9 +33,36 @@ Processor = collections.namedtuple("Processor", (
     "c2s_from_outside", "c2s_from_inside", "s2c_from_outside", "s2c_from_inside"))
 
 
-def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c_inner, **_):
-
+def postgres_root_processor(loop, non_ssl_client_sock, server_sock, to_c2s_inner, to_s2c_inner,
+                            **_):
+    # For now, it does support both ssl and non ssl. Suspect will want to move
+    # to _only_ transporting using encryption
     possible_ssl_request = b""
+
+    ssl_client_sock = None
+
+    async def init_client_tls():
+        nonlocal ssl_client_sock
+
+        sslctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+        sslctx.load_cert_chain(certfile="server.crt", keyfile="server.key")
+        ssl_client_sock = sslctx.wrap_socket(
+            non_ssl_client_sock,
+            server_side=True,
+            do_handshake_on_connect=False)
+        ssl_client_sock.setblocking(False)
+
+        while True:
+            try:
+                ssl_client_sock.do_handshake()
+                break
+            except (ssl.SSLWantReadError, ssl.SSLWantWriteError):
+                # We could have something more efficient, e.g. doing things
+                # with the asyncio readers, but it works
+                await asyncio.sleep(0)
+
+    def get_client_sock():
+        return ssl_client_sock if ssl_client_sock else non_ssl_client_sock
 
     async def c2s_from_outside(data):
         nonlocal possible_ssl_request
@@ -49,7 +77,7 @@ def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c
             print(f'[client->proxy] {SSL_REQUEST_MESSAGE}')
             print(f'[proxy->client] {SSL_REQUEST_RESPONSE}')
             await s2c_from_inside(SSL_REQUEST_RESPONSE)
-            await to_c2s_inner(non_ssl_request)
+            await init_client_tls()
         elif num_remaining and len(possible_ssl_request) == len(SSL_REQUEST_MESSAGE):
             await to_c2s_inner(possible_ssl_request + non_ssl_request)
 
@@ -60,28 +88,37 @@ def postgres_root_processor(loop, client_sock, server_sock, to_c2s_inner, to_s2c
         await to_s2c_inner(data)
 
     async def s2c_from_inside(data):
-        await loop.sock_sendall(client_sock, data)
+        await loop.sock_sendall(get_client_sock(), data)
 
     def on_read_available(sock, on_data):
         loop.create_task(_on_read_available(sock, on_data))
 
-    async def _on_read_available(sock, on_data):
+    async def _on_read_available(get_sock, on_data):
+        # Unfortunately, when using SSL, this gets called repeatedly
+        # even if there isn't any data
         try:
             while True:
-                data = await loop.sock_recv(sock, MAX_READ)
+                data = await loop.sock_recv(get_sock(), MAX_READ)
                 if data:
                     await on_data(data)
                 else:
                     break
+        except ssl.SSLWantReadError:
+            pass
         except BaseException:
-            client_sock.close()
+            if ssl_client_sock:
+                ssl_client_sock.close()
+            non_ssl_client_sock.close()
             server_sock.close()
 
-    loop.add_reader(client_sock.fileno(), partial(on_read_available, client_sock, c2s_from_outside))
-    loop.add_reader(server_sock.fileno(), partial(on_read_available, server_sock, s2c_from_outside))
+    # The SSL and non-TLS sockets share the same fileno, so we only
+    # have to add the reader for one, and it still works after TLS upgrade
+    loop.add_reader(non_ssl_client_sock.fileno(),
+                    partial(on_read_available, get_client_sock, c2s_from_outside))
+    loop.add_reader(server_sock.fileno(),
+                    partial(on_read_available, lambda: server_sock, s2c_from_outside))
 
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
-
 
 def postgres_message_parser(num_startup_messages):
     data_buffer = bytearray()
