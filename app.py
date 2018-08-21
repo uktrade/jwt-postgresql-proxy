@@ -65,7 +65,6 @@ def postgres_root_processor(loop, non_ssl_client_sock, server_sock, to_c2s_inner
             non_ssl_client_sock,
             server_side=True,
             do_handshake_on_connect=False)
-        ssl_client_sock.setblocking(False)
 
         while True:
             try:
@@ -433,7 +432,6 @@ async def async_main(loop):
 
     while True:
         client_sock, _ = await loop.sock_accept(sock)
-        client_sock.setblocking(False)
 
         server_sock = get_new_socket()
         await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
