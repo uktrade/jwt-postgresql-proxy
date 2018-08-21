@@ -426,13 +426,13 @@ def get_new_socket():
 
 
 async def async_main(loop):
-    sock = get_new_socket()
-    sock.bind(("", 7777))
-    sock.listen(socket.IPPROTO_TCP)
+    listen_for_client_sock = get_new_socket()
+    listen_for_client_sock.bind(("", 7777))
+    listen_for_client_sock.listen(socket.IPPROTO_TCP)
 
     async def next_connection():
         try:
-            client_sock, _ = await loop.sock_accept(sock)
+            client_sock, _ = await loop.sock_accept(listen_for_client_sock)
             server_sock = get_new_socket()
             await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
             await handle_client(loop, client_sock, server_sock)
