@@ -432,7 +432,6 @@ async def async_main(loop):
 
     while True:
         client_sock, _ = await loop.sock_accept(sock)
-
         server_sock = get_new_socket()
         await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
 
