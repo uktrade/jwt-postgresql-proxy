@@ -41,6 +41,8 @@ PAYLOAD_LENGTH_FORMAT = "!L"
 SSL_REQUEST_MESSAGE = B"\x00\x00\x00\x08\x04\xd2\x16/"
 SSL_REQUEST_RESPONSE = B"S"
 
+# Message tuples are constructed so their components can be concatanated together
+# to return the bytes of the message suitable for transmission to Postgres
 Message = collections.namedtuple("Message", (
     "type", "payload_length", "payload"))
 Processor = collections.namedtuple("Processor", (
@@ -187,19 +189,9 @@ def postgres_message_parser(num_startup_messages):
         )
 
     def extract_messages(data):
-        """ Yields a generator of Messages, each Message being the raw bytes of
+        """ Returns a list of Messages, each Message being the raw bytes of
         components of Postgres messages passed in data, or combined with that of
         previous calls where the data passed ended with an incomplete message
-
-        The components of the triple:
-
-          type of the message,
-          the length of the payload,
-          the payload itself,
-
-        Each component is optional, and will be the empty byte if its not present
-        Each Message is so constructed so that full original bytes can be retrieved
-        by just concatanating them together, to make proxying easier
         """
         push_data(data)
 
