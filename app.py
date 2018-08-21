@@ -430,12 +430,20 @@ async def async_main(loop):
     sock.bind(("", 7777))
     sock.listen(socket.IPPROTO_TCP)
 
-    while True:
-        client_sock, _ = await loop.sock_accept(sock)
-        server_sock = get_new_socket()
-        await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
+    async def next_connection():
+        try:
+            client_sock, _ = await loop.sock_accept(sock)
+            server_sock = get_new_socket()
+            await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
+            await handle_client(loop, client_sock, server_sock)
+        except BaseException:
+            if client_sock:
+                client_sock.close()
+            if server_sock:
+                server_sock.close()
 
-        await handle_client(loop, client_sock, server_sock)
+    while True:
+        await next_connection()
 
 
 def main():
