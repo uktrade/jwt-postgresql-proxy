@@ -433,6 +433,13 @@ async def async_main(loop):
     async def next_connection():
         try:
             client_sock, _ = await loop.sock_accept(listen_for_client_sock)
+            loop.create_task(_handle_client(client_sock))
+        except BaseException:
+            if client_sock:
+                client_sock.close()
+
+    async def _handle_client(client_sock):
+        try:
             server_sock = get_new_socket()
             await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
             await handle_client(loop, client_sock, server_sock)
@@ -440,7 +447,7 @@ async def async_main(loop):
             if client_sock:
                 client_sock.close()
             if server_sock:
-                server_sock.close()
+                server_socker.close()
 
     while True:
         await next_connection()
