@@ -26,6 +26,11 @@ import struct
 Processor = collections.namedtuple("Processor", (
     "c2s_from_outside", "c2s_from_inside", "s2c_from_outside", "s2c_from_inside"))
 
+# Message tuples are constructed so their components can be concatanated together
+# to return the bytes of the message suitable for transmission to Postgres
+Message = collections.namedtuple("Message", (
+    "type", "payload_length", "payload"))
+
 # How much we read at once. Messages _can_ be larger than this
 # Often good to test this set to something really low to make
 # sure the logic works for network reads that return only partial
@@ -42,11 +47,6 @@ PAYLOAD_LENGTH_FORMAT = "!L"
 
 SSL_REQUEST_MESSAGE = B"\x00\x00\x00\x08\x04\xd2\x16/"
 SSL_REQUEST_RESPONSE = B"S"
-
-# Message tuples are constructed so their components can be concatanated together
-# to return the bytes of the message suitable for transmission to Postgres
-Message = collections.namedtuple("Message", (
-    "type", "payload_length", "payload"))
 
 
 def postgres_root_processor(loop, non_ssl_client_sock, server_sock, to_c2s_inner, to_s2c_inner,
