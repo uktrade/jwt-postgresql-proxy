@@ -23,6 +23,8 @@ import struct
 # - multiple messages, not just the one response to a request
 # - to either client or server at any time, or choose _not_ to if 
 #   conditions haven't been met, such as authentication
+Processor = collections.namedtuple("Processor", (
+    "c2s_from_outside", "c2s_from_inside", "s2c_from_outside", "s2c_from_inside"))
 
 # How much we read at once. Messages _can_ be larger than this
 # Often good to test this set to something really low to make
@@ -45,8 +47,6 @@ SSL_REQUEST_RESPONSE = B"S"
 # to return the bytes of the message suitable for transmission to Postgres
 Message = collections.namedtuple("Message", (
     "type", "payload_length", "payload"))
-Processor = collections.namedtuple("Processor", (
-    "c2s_from_outside", "c2s_from_inside", "s2c_from_outside", "s2c_from_inside"))
 
 
 def postgres_root_processor(loop, non_ssl_client_sock, server_sock, to_c2s_inner, to_s2c_inner,
