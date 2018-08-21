@@ -420,9 +420,14 @@ def flatten(list_to_flatten):
     return (item for sublist in list_to_flatten for item in sublist)
 
 
-async def async_main(loop):
+def get_new_socket():
     sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     sock.setblocking(False)
+    return sock
+
+
+async def async_main(loop):
+    sock = get_new_socket()
     sock.bind(("", 7777))
     sock.listen(socket.IPPROTO_TCP)
 
@@ -430,9 +435,7 @@ async def async_main(loop):
         client_sock, _ = await loop.sock_accept(sock)
         client_sock.setblocking(False)
 
-        server_sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
-                                    proto=socket.IPPROTO_TCP)
-        server_sock.setblocking(False)
+        server_sock = get_new_socket()
         await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
 
         await handle_client(loop, client_sock, server_sock)
