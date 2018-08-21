@@ -365,12 +365,7 @@ def echo_processor(to_c2s_outer, to_s2c_outer, **_):
     return Processor(c2s_from_outside, c2s_from_inside, s2c_from_outside, s2c_from_inside)
 
 
-async def handle_client(loop, client_sock):
-    server_sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
-                                proto=socket.IPPROTO_TCP)
-    server_sock.setblocking(False)
-    await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
-
+async def handle_client(loop, client_sock, server_sock):
     async def to_c2s_inner(i, data):
         return await processors[i + 1].c2s_from_outside(data)
 
@@ -433,9 +428,14 @@ async def async_main(loop):
 
     while True:
         client_sock, _ = await loop.sock_accept(sock)
-        # Unsure if this is needed
         client_sock.setblocking(False)
-        await handle_client(loop, client_sock)
+
+        server_sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
+                                    proto=socket.IPPROTO_TCP)
+        server_sock.setblocking(False)
+        await loop.sock_connect(server_sock, ("127.0.0.1", 5432))
+
+        await handle_client(loop, client_sock, server_sock)
 
 
 def main():
