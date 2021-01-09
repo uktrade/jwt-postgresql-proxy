@@ -17,7 +17,7 @@ This proxy avoids having to do the above workarounds:
 
 - Database credentials are issued as a temporary stateless JWT token, by code that holds a private key.
 
-- Instead of connecting directly to the database, users connect to this proxy. It verifies the credentials using the corresponding public key, and connects to the database as the permanent database user, the the credentials of which the real-world user never knows.
+- Instead of connecting directly to the database, users connect to this proxy. It verifies the credentials using the corresponding public key, and connects to the database as the permanent database user, the credentials of which the real-world user never knows.
 
 The JWT token being _stateless_ means that the issuer of credentials does not need to communicate with the proxy via some internal API, and this proxy does not need a database to store credentials.
 
@@ -38,14 +38,14 @@ print(private_key.public_key().public_bytes(encoding=Encoding.PEM, format=Public
 The issers of credentials would use the private key to create a JWT for a database user, such as in the below Python example for the database user `my_user` for the next 24 hours.
 
 ```python
-from base64 import b64encode
+from base64 import urlsafe_b64encode
 import json
 import time
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 def b64encode_nopadding(to_encode):
-	return b64encode(to_encode).rstrip(b'=')
+	return urlsafe_b64encode(to_encode).rstrip(b'=')
 
 private_key = load_pem_private_key(
 	# In real cases, take the private key from an environment variable or secret store
