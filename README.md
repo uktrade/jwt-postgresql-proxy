@@ -72,7 +72,7 @@ The JWT can be given to the real-world user, and used as the PostgreSQL password
 ```python
 import psycopg2
 
-jwt = 'eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFZERTQSIsICJjcnYiOiAiRWQyNTUxOSJ9.eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFZERTQSIsICJjcnYiOiAiRWQyNTUxOSJ9.pkV3ZTyWC8aF7xj/Dxde6aZiehYfEiV5cEIF8iFHmiJxgPQbifvM6mWo2FHTuM85r5zidb6FkIs747DD4xhIAw'
+jwt = 'eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFZERTQSIsICJjcnYiOiAiRWQyNTUxOSJ9.eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFZERTQSIsICJjcnYiOiAiRWQyNTUxOSJ9.pkV3ZTyWC8aF7xj_Dxde6aZiehYfEiV5cEIF8iFHmiJxgPQbifvM6mWo2FHTuM85r5zidb6FkIs747DD4xhIAw'
 conn = psycopg2.connect(password=jwt, user='my_user', host='host-of-the-proxy', dbname='my_dbname', port=5432)
 ```
 
