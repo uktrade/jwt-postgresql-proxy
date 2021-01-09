@@ -67,7 +67,7 @@ jwt = (to_sign + b'.' + signature).decode()
 print(jwt)
 ```
 
-The JWT can be given to the real-world user, and used as the PostgreSQL password to connect to the proxy as `my-user`.
+The JWT can be given to the real-world user, and used as the PostgreSQL password to connect to the proxy as `my_user`.
 
 ```python
 import psycopg2
