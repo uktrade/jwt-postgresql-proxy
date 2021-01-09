@@ -35,7 +35,7 @@ print(private_key.private_bytes(encoding=Encoding.PEM, format=PrivateFormat.PKCS
 print(private_key.public_key().public_bytes(encoding=Encoding.PEM, format=PublicFormat.SubjectPublicKeyInfo))
 ```
 
-The issers of credentials would use the private key to create a JWT for a database user, such as in the below Python example for the database user `my_user` for the next 24 hours.
+The issuer of credentials would use the private key to create a JWT for a database user, such as in the below Python example for the database user `my_user` for the next 24 hours.
 
 ```python
 from base64 import urlsafe_b64encode
