@@ -22,7 +22,7 @@ This proxy avoids having to do the above workarounds:
 The JWT token being _stateless_ means that the issuer of credentials does not need to communicate with the proxy via some internal API, and this proxy does not need a database to store credentials.
 
 
-## Usage
+## Usage: Issuing and using credentials
 
 An Ed25519 public/private key pair needs to be created, for example using the [Python cryptography package](https://github.com/pyca/cryptography):
 
@@ -75,6 +75,32 @@ import psycopg2
 jwt = 'eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFZERTQSIsICJjcnYiOiAiRWQyNTUxOSJ9.eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFZERTQSIsICJjcnYiOiAiRWQyNTUxOSJ9.pkV3ZTyWC8aF7xj/Dxde6aZiehYfEiV5cEIF8iFHmiJxgPQbifvM6mWo2FHTuM85r5zidb6FkIs747DD4xhIAw'
 conn = psycopg2.connect(password=jwt, user='my_user', host='host-of-the-proxy', dbname='my_dbname', port=5432)
 ```
+
+
+## Usage: installing, configuring, and running the proxy
+
+To install, Python `pip` is used
+
+```bash
+pip install jwt-postgresql-proxy
+```
+
+Configuration is done via environment variables
+
+| Variable           | Description                                                                                                                                                                                                                                                                                        |
+|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| PUBLIC_KEYS__i     | For any integer `i`, a public key corresponding to the private key used to sign the JWTs used by clients as the PostgreSQL password. Multiple keys are allowed at any given time to allow for key rotation.                                                                                        |
+| DATABASE__HOST     | The host of the database that the proxy connects to.                                                                                                                                                                                                                                               |
+| DATABASE__PORT     | The port of the database that the proxy connects to.                                                                                                                                                                                                                                               |
+| DATABASE__PASSWORD | The password of the database that the proxy connects to. Note that all users that the proxy connects to on the database must have the same password. While unusual, this isn't materially different to always connecting as the same "master" user which has a single password, which is a typical pattern. |
+
+
+To start the proxy
+
+```bash
+jwt-postgresql-proxy
+```
+
 
 ## Development environment
 
