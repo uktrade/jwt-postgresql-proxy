@@ -15,11 +15,11 @@ You have a PostgreSQL database, and would like to frequently issue temporary cre
 
 This proxy avoids having to do the above workarounds:
 
-- Database credentials are issued as a temporary "stateless" JWT token, by code that holds a private key.
+- Database credentials are issued as a temporary stateless JWT token, by code that holds a private key.
 
 - Instead of connecting directly to the database, users connect to this proxy. It verifies the credentials using the corresponding public key, and connects to the database as the permanent database user, the the credentials of which the real-world user never knows.
 
-The "stateless" JWT token means that the issuer of credentials does not need to communicate with the proxy via some internal API, and this proxy does not need a database to store credentials.
+The JWT token being _stateless_ means that the issuer of credentials does not need to communicate with the proxy via some internal API, and this proxy does not need a database to store credentials.
 
 
 ## Development environment
