@@ -45,10 +45,10 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 def b64encode_nopadding(to_encode):
-	return urlsafe_b64encode(to_encode).rstrip(b'=')
+    return urlsafe_b64encode(to_encode).rstrip(b'=')
 
 private_key = load_pem_private_key(
-	# In real cases, take the private key from an environment variable or secret store
+    # In real cases, take the private key from an environment variable or secret store
     b'-----BEGIN PRIVATE KEY-----\n' \
     b'MC4CAQAwBQYDK2VwBCIEINQG5lNt1bE8TZa68mV/WZdpqsXaOXBHvgPQGm5CcjHp\n' \
     b'-----END PRIVATE KEY-----\n', password=None, backend=default_backend())
