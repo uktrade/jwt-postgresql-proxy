@@ -1,6 +1,6 @@
 # jwt-postgresql-proxy
 
-PostgreSQL proxy that puts stateless JWT authentication in front of PostgreSQL
+Stateless JWT authentication in front of PostgreSQL
 
 > This is a work-in-progress. This README serves as a rough design spec.
 
