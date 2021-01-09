@@ -19,7 +19,7 @@ This proxy avoids having to do the above workarounds:
 
 - Instead of connecting directly to the database, users connect to this proxy. It verifies the credentials, and connects to the database as the permanent database user, the the credentials of which the real-world user never knows.
 
-The "stateless" JWT token means that the issuer of credentials does not need to communicate with the proxy via some internal API. The issuer needs a private key, with the corresponding public key known to this proxy.
+The "stateless" JWT token means that the issuer of credentials does not need to communicate with the proxy via some internal API, and this proxy does not need a database to store credentials. The issuer needs a private key, with the corresponding public key known to this proxy.
 
 
 ## Development environment
