@@ -93,7 +93,8 @@ Configuration is done via environment variables
 | DATABASE__HOST     | The host of the database that the proxy connects to.                                                                                                                                                                                                                                               |
 | DATABASE__PORT     | The port of the database that the proxy connects to.                                                                                                                                                                                                                                               |
 | DATABASE__PASSWORD | The password of the database that the proxy connects to. Note that all users that the proxy connects to on the database must have the same password. While unusual, this isn't materially different to always connecting as the same "master" user which has a single password, which is a typical pattern. |
-
+| LISTEN__IP       | The IP of the network interface to listen on for incoming connections. This is empty to listen on all interfaces, or `127.0.0.1` to listen only for connections from localhost. |
+| LISTEN__PORT     | The port to listen on for incoming connections. Typically, this is `5432`. |
 
 To start the proxy
 
