@@ -2,11 +2,6 @@ from gevent import monkey
 monkey.patch_all()
 
 from base64 import urlsafe_b64decode
-import collections
-import contextlib
-from functools import (
-    partial,
-)
 import re
 import gevent
 import json
@@ -81,7 +76,8 @@ def server():
             client_sock.close()
 
     def handle_client_post_tls(ssl_client_sock):
-        startup_message_len, protocol_version = STARTUP_MESSAGE_HEADER.unpack(recv_exactly(ssl_client_sock, STARTUP_MESSAGE_HEADER.size))
+        startup_message_len, protocol_version = STARTUP_MESSAGE_HEADER.unpack(
+            recv_exactly(ssl_client_sock, STARTUP_MESSAGE_HEADER.size))
         if startup_message_len > MAX_IN_MEMORY_MESSAGE_LENGTH:
             raise ProtocolError('Startup message too large')
 
@@ -89,15 +85,20 @@ def server():
             ssl_client_sock.sendall(MESSAGE_HEADER.pack(b'E', 4 + 1) + b'\x00')
             return
 
-        startup_key_value_pairs = recv_exactly(ssl_client_sock, startup_message_len - STARTUP_MESSAGE_HEADER.size)
-        pairs = dict(re.compile(b"([^\x00]+)\x00([^\x00]*)").findall(startup_key_value_pairs))
+        startup_key_value_pairs = recv_exactly(
+            ssl_client_sock, startup_message_len - STARTUP_MESSAGE_HEADER.size)
+        pairs = dict(re.compile(b'([^\x00]+)\x00([^\x00]*)').findall(startup_key_value_pairs))
         claimed_user = pairs[b'user']
         database = pairs[b'database']
 
-        ssl_client_sock.sendall(MESSAGE_HEADER.pack(b'R', 4 + INT.size) + INT.pack(AUTHENTICATION_CLEARTEXT_PASSWORD))
+        print(claimed_user, database)
+
+        ssl_client_sock.sendall(MESSAGE_HEADER.pack(b'R', 4 + INT.size)
+                                + INT.pack(AUTHENTICATION_CLEARTEXT_PASSWORD))
 
         # Password response
-        tag, payload_length = MESSAGE_HEADER.unpack(recv_exactly(ssl_client_sock, MESSAGE_HEADER.size))
+        tag, payload_length = MESSAGE_HEADER.unpack(
+            recv_exactly(ssl_client_sock, MESSAGE_HEADER.size))
         if payload_length > MAX_IN_MEMORY_MESSAGE_LENGTH:
             raise ProtocolError('Password response message too large')
 
@@ -108,6 +109,7 @@ def server():
         header_b64, payload_b64, signature_b64 = password.split(b'.')
 
         try:
+            # pylint: disable=no-value-for-parameter
             public_key.verify(b64_decode(signature_b64), header_b64 + b'.' + payload_b64)
         except InvalidSignature:
             is_valid = False
@@ -123,14 +125,17 @@ def server():
             ssl_client_sock.sendall(MESSAGE_HEADER.pack(b'E', 4 + len(failed)) + failed)
             return
 
-        ssl_client_sock.sendall(MESSAGE_HEADER.pack(b'R', 4 + INT.size) + INT.pack(AUTHENTICATION_OK))
+        ssl_client_sock.sendall(MESSAGE_HEADER.pack(
+            b'R', 4 + INT.size) + INT.pack(AUTHENTICATION_OK))
 
         header = json.loads(b64_decode(header_b64))
         payload = json.loads(b64_decode(payload_b64))
 
+        print(header, payload)
 
     def get_new_socket():
-        sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
+        sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
+                             proto=socket.IPPROTO_TCP)
         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         return sock
 
@@ -144,7 +149,7 @@ def server():
         return joined
 
     sock = get_new_socket()
-    sock.bind(("127.0.0.1", 7777))
+    sock.bind(('127.0.0.1', 7777))
     sock.listen(socket.IPPROTO_TCP)
 
     while True:
@@ -157,5 +162,5 @@ def main():
     server()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
