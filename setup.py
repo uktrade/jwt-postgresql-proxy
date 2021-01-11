@@ -22,6 +22,7 @@ setuptools.setup(
     python_requires='>=3.8.0',
     install_requires=[
         'cryptography>=3.3.1',
+        'gevent>=20.12.1',
     ],
     py_modules=[
         'jwt_postgresql_proxy',
