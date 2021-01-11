@@ -9,7 +9,7 @@ jobs:
           name: Install dependencies
           command: |
             pip install .
-            pip install pre-commit pylint
+            pip install pre-commit pylint coverage
             pre-commit install --install-hooks
             curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
             chmod +x ./cc-test-reporter
