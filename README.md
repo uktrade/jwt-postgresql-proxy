@@ -1,4 +1,4 @@
-# jwt-postgresql-proxy
+# jwt-postgresql-proxy [![CircleCI](https://circleci.com/gh/uktrade/jwt-postgresql-proxy.svg?style=svg)](https://circleci.com/gh/uktrade/jwt-postgresql-proxy) [![Test Coverage](https://api.codeclimate.com/v1/badges/ff380168c33456b7a248/test_coverage)](https://codeclimate.com/github/uktrade/jwt-postgresql-proxy/test_coverage)
 
 Stateless JWT authentication in front of PostgreSQL
 
