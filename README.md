@@ -85,7 +85,7 @@ To install, Python `pip` is used
 pip install jwt-postgresql-proxy
 ```
 
-Configuration is done via environment variables
+Configuration is done via environment variables. All of the below environment variables are required.
 
 | Variable            | Description                                                                                                                                                                                                                                                                                        |
 |---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
