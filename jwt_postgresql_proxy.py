@@ -31,6 +31,9 @@ class AuthenticationError(Exception):
 
 def main():
     env = normalise_environment(os.environ)
+    UPSTREAM__HOST = env['UPSTREAM']['HOST']
+    UPSTREAM__PORT = env['UPSTREAM']['PORT']
+    UPSTREAM__PASSWORD = env['UPSTREAM']['PASSWORD']
     DOWNSTREAM__IP = env['DOWNSTREAM']['IP']
     DOWNSTREAM__PORT = env['DOWNSTREAM']['PORT']
     DOWNSTREAM__CERTFILE = env['DOWNSTREAM']['CERTFILE']
@@ -214,7 +217,7 @@ def main():
         downstream_sock.sendall(MESSAGE_HEADER.pack(b'E', 4 + 1) + b'\x00')
 
     def upstream_connect():
-        upstream_sock = socket.create_connection(('127.0.0.1', '5432'))
+        upstream_sock = socket.create_connection((UPSTREAM__HOST, UPSTREAM__PORT))
         upstream_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         return upstream_sock
 
@@ -251,7 +254,7 @@ def main():
 
         salt = message[4:]
         hashed_password = b'md5' + \
-            md5(md5(b'password' + user.encode()).hexdigest().encode()
+            md5(md5(UPSTREAM__PASSWORD.encode() + user.encode()).hexdigest().encode()
                 + salt).hexdigest().encode() + b'\x00'
 
         upstream_sock_ssl.sendall(MESSAGE_HEADER.pack(
