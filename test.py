@@ -16,6 +16,8 @@ def with_application():
                     **os.environ,
                     'DOWNSTREAM__IP': '127.0.0.1',
                     'DOWNSTREAM__PORT': '7777',
+                    'DOWNSTREAM__CERTFILE': 'server.crt',
+                    'DOWNSTREAM__KEYFILE': 'server.key',
                 }
             )
 

@@ -39,6 +39,8 @@ def main():
     env = normalise_environment(os.environ)
     DOWNSTREAM__IP = env['DOWNSTREAM']['IP']
     DOWNSTREAM__PORT = env['DOWNSTREAM']['PORT']
+    DOWNSTREAM__CERTFILE = env['DOWNSTREAM']['CERTFILE']
+    DOWNSTREAM__KEYFILE = env['DOWNSTREAM']['KEYFILE']
 
     TLS_REQUEST = b'\x00\x00\x00\x08\x04\xd2\x16/'
     TLS_RESPONSE = b'S'
@@ -58,7 +60,8 @@ def main():
     MAX_IN_MEMORY_MESSAGE_LENGTH = 66560
 
     ssl_context_downstream = ssl.SSLContext(ssl.PROTOCOL_TLS)
-    ssl_context_downstream.load_cert_chain(certfile='server.crt', keyfile='server.key')
+    ssl_context_downstream.load_cert_chain(
+        certfile=DOWNSTREAM__CERTFILE, keyfile=DOWNSTREAM__KEYFILE)
 
     ssl_context_upstream = ssl.SSLContext(ssl.PROTOCOL_TLS)
     ssl_context_upstream.verify_mode = ssl.CERT_NONE
