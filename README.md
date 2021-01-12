@@ -105,9 +105,9 @@ jwt-postgresql-proxy
 ```
 
 
-## Development environment
+## Tests
 
-```
-python3 -m venv env
-source env/bin/activate
+```bash
+./start-postgres.sh  # Only needs to be done once
+./test.sh
 ```
