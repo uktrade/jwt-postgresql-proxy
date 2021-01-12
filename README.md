@@ -61,7 +61,7 @@ payload = {
     'sub': 'my_user',
     'exp': int(time.time() + 60 * 60 * 24),
 }
-to_sign = b64encode_nopadding(json.dumps(header).encode('utf-8')) + b'.' + b64encode_nopadding(json.dumps(header).encode('utf-8'))
+to_sign = b64encode_nopadding(json.dumps(header).encode('utf-8')) + b'.' + b64encode_nopadding(json.dumps(payload).encode('utf-8'))
 signature = b64encode_nopadding(private_key.sign(to_sign))
 jwt = (to_sign + b'.' + signature).decode()
 print(jwt)
@@ -72,7 +72,7 @@ The JWT can be given to the real-world user, and used as the PostgreSQL password
 ```python
 import psycopg2
 
-jwt = 'eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFZERTQSIsICJjcnYiOiAiRWQyNTUxOSJ9.eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFZERTQSIsICJjcnYiOiAiRWQyNTUxOSJ9.pkV3ZTyWC8aF7xj_Dxde6aZiehYfEiV5cEIF8iFHmiJxgPQbifvM6mWo2FHTuM85r5zidb6FkIs747DD4xhIAw'
+jwt = 'eyJ0eXAiOiAiSldUIiwgImFsZyI6ICJFZERTQSIsICJjcnYiOiAiRWQyNTUxOSJ9.eyJzdWIiOiAibXlfdXNlciIsICJleHAiOiAxNjEwNTYxOTYxfQ.YeTn4oYwOvQLApTg2WgldX--qRywM0MV-EoDdL7ZNr0HnoadxZ9wKt_fqqT7L8w1d378UtaXavq0B_LUYUt4Dg'
 conn = psycopg2.connect(password=jwt, user='my_user', host='host-of-the-proxy', dbname='my_dbname', port=5432)
 ```
 
