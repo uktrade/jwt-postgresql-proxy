@@ -11,6 +11,7 @@ import json
 import socket
 import ssl
 import struct
+import time
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
@@ -199,6 +200,10 @@ def main():
         # Ensure the signed JWT `sub` is the same as the claimed database user
         payload = json.loads(b64_decode(payload_b64))
         if claimed_user != payload['sub']:
+            raise AuthenticationError()
+
+        now = time.time()
+        if payload['exp'] <= now:
             raise AuthenticationError()
 
         # Tell downstream we are authenticated
