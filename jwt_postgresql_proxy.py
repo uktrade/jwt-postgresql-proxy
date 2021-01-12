@@ -299,8 +299,11 @@ def main():
         chunks = []
         while amount:
             chunk = sock.recv(min(amount, MAX_READ))
-            chunks.append(chunk)
-            amount -= len(chunks[-1])
+            if chunk:
+                chunks.append(chunk)
+                amount -= len(chunks[-1])
+            else:
+                raise Exception()
         joined = b''.join(chunks)
         return joined
 

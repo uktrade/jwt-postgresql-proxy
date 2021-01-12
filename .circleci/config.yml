@@ -3,7 +3,7 @@ jobs:
   build:
     docker:
       - image: python:3.8.7
-      - image: circleci/postgres:13.0
+      - image: postgres:9.6.7
         environment:
           POSTGRES_PASSWORD: password
         entrypoint: bash
@@ -19,13 +19,19 @@ jobs:
           name: Install dependencies
           command: |
             pip install .
-            pip install pre-commit pylint coverage
+            pip install pre-commit pylint coverage psycopg2
             pre-commit install --install-hooks
             curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
             chmod +x ./cc-test-reporter
       - run:
           name: Run linting
           command: pre-commit run --all-files
+      - run:
+          name: Wait for PostgreSQL
+          command: |
+            apt-get update && apt-get install -y netcat
+            echo "Waiting for PostgreSQL..."
+            while ! nc -z localhost 5432 </dev/null; do sleep 10; done
       - run:
           name: Run tests
           command: |
