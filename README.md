@@ -87,14 +87,16 @@ pip install jwt-postgresql-proxy
 
 Configuration is done via environment variables
 
-| Variable           | Description                                                                                                                                                                                                                                                                                        |
-|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| PUBLIC_KEYS__i     | For any integer `i`, a public key corresponding to the private key used to sign the JWTs used by clients as the PostgreSQL password. Multiple keys are allowed at any given time to allow for key rotation. Each key must be in PEM format, and have no password.                          |
-| DATABASE__HOST     | The host of the database that the proxy connects to.                                                                                                                                                                                                                                               |
-| DATABASE__PORT     | The port of the database that the proxy connects to.                                                                                                                                                                                                                                               |
-| DATABASE__PASSWORD | The password of the database that the proxy connects to. Note that all users that the proxy connects to on the database must have the same password. While unusual, this isn't materially different to always connecting as the same "master" user which has a single password, which is a typical pattern. |
-| LISTEN__IP       | The IP of the network interface to listen on for incoming connections. This is empty to listen on all interfaces, or `127.0.0.1` to listen only for connections on localhost. |
-| LISTEN__PORT     | The port to listen on for incoming connections. Typically, this is `5432`. |
+| Variable            | Description                                                                                                                                                                                                                                                                                        |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| PUBLIC_KEYS__i       | For any integer `i`, a public key corresponding to the private key used to sign the JWTs used by clients as the PostgreSQL password. Multiple keys are allowed at any given time to allow for key rotation. Each key must be in PEM format, and have no password.                          |
+| UPSTREAM__HOST       | The host of the database that the proxy connects to.                                                                                                                                                                                                                                               |
+| UPSTREAM__PORT       | The port of the database that the proxy connects to.                                                                                                                                                                                                                                               |
+| UPSTREAM__PASSWORD   | The password of the database that the proxy connects to. Note that all users that the proxy connects to on the database must have the same password. While unusual, this isn't materially different to always connecting as the same "master" user which has a single password, which is a typical pattern. |
+| DOWNSTREAM__IP       | The IP of the network interface to listen on for incoming connections. This is empty to listen on all interfaces, or `127.0.0.1` to listen only for connections on localhost. |
+| DOWNSTREAM__PORT     | The port to listen on for incoming connections. Typically, this is `5432`. |
+| DOWNSTREAM__CERTFILE | The path to the certificate presented to incoming downstream connections. |
+| DOWNSTREAM__KEYFILE  | The path to the private key used in downstream connections. |
 
 To start the proxy
 
