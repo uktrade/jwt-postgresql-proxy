@@ -91,6 +91,7 @@ def server():
 
             # Run proxy
             proxy_both_directions(downstream_sock_ssl, upstream_sock_ssl)
+
         except AuthenticationError:
             downstream_send_auth_error(downstream_sock_ssl or downstream_sock)
 
