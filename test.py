@@ -14,6 +14,11 @@ def with_application():
                 stdout=subprocess.PIPE,
                 env={
                     **os.environ,
+                    'PUBLIC_KEYS__1': (
+                        '-----BEGIN PUBLIC KEY-----\n'
+                        'MCowBQYDK2VwAyEAe9+zIz+CH9E++J0qiE6aS657qzxsNWIEf2BZcUAQF94=\n'
+                        '-----END PUBLIC KEY-----\n'
+                    ),
                     'DOWNSTREAM__IP': '127.0.0.1',
                     'DOWNSTREAM__PORT': '7777',
                     'DOWNSTREAM__CERTFILE': 'server.crt',

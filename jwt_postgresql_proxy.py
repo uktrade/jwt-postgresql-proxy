@@ -16,12 +16,6 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
-public_key = \
-    b'-----BEGIN PUBLIC KEY-----\n' \
-    b'MCowBQYDK2VwAyEAe9+zIz+CH9E++J0qiE6aS657qzxsNWIEf2BZcUAQF94=\n' \
-    b'-----END PUBLIC KEY-----\n'
-public_key = load_pem_public_key(public_key, backend=default_backend())
-
 
 class ConnectionClosed(Exception):
     pass
@@ -41,6 +35,7 @@ def main():
     DOWNSTREAM__PORT = env['DOWNSTREAM']['PORT']
     DOWNSTREAM__CERTFILE = env['DOWNSTREAM']['CERTFILE']
     DOWNSTREAM__KEYFILE = env['DOWNSTREAM']['KEYFILE']
+    PUBLIC_KEYS = env['PUBLIC_KEYS']
 
     TLS_REQUEST = b'\x00\x00\x00\x08\x04\xd2\x16/'
     TLS_RESPONSE = b'S'
@@ -65,6 +60,11 @@ def main():
 
     ssl_context_upstream = ssl.SSLContext(ssl.PROTOCOL_TLS)
     ssl_context_upstream.verify_mode = ssl.CERT_NONE
+
+    public_keys = [
+        load_pem_public_key(public_key.encode(), backend=default_backend())
+        for public_key in PUBLIC_KEYS
+    ]
 
     def b64_decode(b64_bytes):
         return urlsafe_b64decode(b64_bytes + (b'=' * ((4 - len(b64_bytes) % 4) % 4)))
@@ -182,11 +182,16 @@ def main():
 
         # Verify signature
         header_b64, payload_b64, signature_b64 = password.split(b'.')
-        try:
-            # pylint: disable=no-value-for-parameter
-            public_key.verify(b64_decode(signature_b64), header_b64 + b'.' + payload_b64)
-        except InvalidSignature as exception:
-            raise AuthenticationError() from exception
+        for public_key in public_keys:
+            try:
+                # pylint: disable=no-value-for-parameter
+                public_key.verify(b64_decode(signature_b64), header_b64 + b'.' + payload_b64)
+            except InvalidSignature:
+                continue
+            else:
+                break
+        else:
+            raise AuthenticationError()
 
         # Ensure the signed JWT `sub` is the same as the claimed database user
         payload = json.loads(b64_decode(payload_b64))
