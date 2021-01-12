@@ -134,3 +134,26 @@ class TestProxy(unittest.TestCase):
 
         with self.assertRaisesRegex(psycopg2.OperationalError, 'Authentication failed'):
             psycopg2.connect(dsn)
+
+    @with_application()
+    def test_fails_if_bad_signature(self):
+        header = {
+            'typ': 'JWT',
+            'alg': 'EdDSA',
+            'crv': 'Ed25519',
+        }
+        payload = {
+            'sub': 'postgres',
+            'exp': int(time.time() - 5),
+        }
+        to_sign = b64encode_nopadding(json.dumps(header).encode(
+            'utf-8')) + b'.' + b64encode_nopadding(json.dumps(payload).encode('utf-8'))
+        signature = b64encode_nopadding(b'Some random bytes')
+        jwt = (to_sign + b'.' + signature).decode()
+
+        dsn = \
+            f'dbname=postgres user=postgres password={jwt} host=127.0.0.1 port=7777 ' \
+            'sslmode=require'
+
+        with self.assertRaisesRegex(psycopg2.OperationalError, 'Authentication failed'):
+            psycopg2.connect(dsn)
