@@ -88,6 +88,9 @@ def server():
 
             # Authenticate upstream user
             upstream_authenticate(upstream_sock_ssl, user)
+
+            # Run proxy
+            proxy_both_directions(downstream_sock_ssl, upstream_sock_ssl)
         except AuthenticationError:
             downstream_send_auth_error(downstream_sock_ssl or downstream_sock)
 
@@ -248,6 +251,25 @@ def server():
         auth_result, = INT.unpack(message)
         if auth_result != AUTHENTICATION_OK:
             raise AuthenticationError()
+
+    def proxy_both_directions(sock_a, sock_b):
+        done = gevent.event.Event()
+
+        def _proxy(source, target):
+            try:
+                while chunk := source.recv(MAX_READ):
+                    target.sendall(chunk)
+            finally:
+                done.set()
+
+        a_to_b_greenlet = gevent.spawn(_proxy, sock_a, sock_b)
+        b_to_a_greenlet = gevent.spawn(_proxy, sock_b, sock_a)
+        done.wait()
+
+        a_to_b_greenlet.kill()
+        b_to_a_greenlet.kill()
+        a_to_b_greenlet.join()
+        b_to_a_greenlet.join()
 
     def get_new_socket():
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
