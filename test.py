@@ -14,6 +14,8 @@ def with_application():
                 stdout=subprocess.PIPE,
                 env={
                     **os.environ,
+                    'DOWNSTREAM__IP': '127.0.0.1',
+                    'DOWNSTREAM__PORT': '7777',
                 }
             )
 
