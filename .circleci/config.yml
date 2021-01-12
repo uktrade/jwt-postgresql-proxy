@@ -3,6 +3,16 @@ jobs:
   build:
     docker:
       - image: python:3.8.7
+      - image: circleci/postgres:13.0
+        environment:
+          POSTGRES_PASSWORD: password
+        entrypoint: bash
+        command: >
+          -c
+          openssl req -nodes -new -x509 -subj "/CN=localhost" -keyout server.key -out server.crt &&
+          chown postgres server.key &&
+          chmod 600 /server.key &&
+          exec /docker-entrypoint.sh -c ssl=on -c ssl_cert_file=/server.crt -c ssl_key_file=/server.key
     steps:
       - checkout
       - run:
