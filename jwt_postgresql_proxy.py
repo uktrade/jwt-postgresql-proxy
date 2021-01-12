@@ -28,6 +28,10 @@ class ProtocolError(Exception):
     pass
 
 
+class DownstreamAuthenticationError(Exception):
+    pass
+
+
 def server():
     TLS_REQUEST = b'\x00\x00\x00\x08\x04\xd2\x16/'
     TLS_RESPONSE = b'S'
@@ -40,98 +44,156 @@ def server():
     AUTHENTICATION_OK = 0
     PASSWORD_RESPONSE = b'p'
 
-    # How much to read from the socket at once
     MAX_READ = 66560
-
-    # For messages that have to be in memory, how big they can be before we throw an error
     MAX_IN_MEMORY_MESSAGE_LENGTH = 66560
 
-    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
-    ssl_context.load_cert_chain(certfile='server.crt', keyfile='server.key')
+    ssl_context_downstream = ssl.SSLContext(ssl.PROTOCOL_TLS)
+    ssl_context_downstream.load_cert_chain(certfile='server.crt', keyfile='server.key')
+
+    ssl_context_upstream = ssl.SSLContext(ssl.PROTOCOL_TLS)
+    ssl_context_upstream.verify_mode = ssl.CERT_NONE
 
     def b64_decode(b64_bytes):
         return urlsafe_b64decode(b64_bytes + (b'=' * ((4 - len(b64_bytes) % 4) % 4)))
 
-    def handle_client_pre_tls(client_sock):
-        ssl_client_sock = None
+    def handle_downstream(downstream_sock):
+        # The high level logic of connection, authentication, and proxying, is all here
+
+        downstream_sock_ssl = None
+        upstream_sock = None
+        upstream_sock_ssl = None
 
         try:
-            chunk = recv_exactly(client_sock, len(TLS_REQUEST))
-            if chunk != TLS_REQUEST:
-                client_sock.sendall(MESSAGE_HEADER.pack(b'E', 4 + 1) + b'\x00')
-                raise ProtocolError()
-            client_sock.sendall(TLS_RESPONSE)
+            # Initiate TLS
+            downstream_sock_ssl = downstream_convert_to_ssl(downstream_sock)
 
-            ssl_client_sock = ssl_context.wrap_socket(client_sock, server_side=True)
+            # Startup PostgreSQL downstream
+            user = downstream_startup(downstream_sock_ssl)
 
-            handle_client_post_tls(ssl_client_sock)
+            # Authenticate downstream user
+            downstream_authenticate(downstream_sock_ssl, user)
+
+            # Connect on TCP level upstream
+            upstream_sock = upstream_connect()
+
+            # Convert upstream to TLS
+            upstream_sock_ssl = upstream_convert_to_ssl(upstream_sock)
+
+        except DownstreamAuthenticationError:
+            downstream_send_auth_error(downstream_sock_ssl or downstream_sock)
+
+        except ProtocolError:
+            downstream_send_error(downstream_sock_ssl or downstream_sock)
+
         finally:
-            if ssl_client_sock is not None:
-                client_sock = ssl_client_sock.unwrap()
-            try:
-                client_sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                # The client could have shut it down alread
-                pass
-            client_sock.close()
+            # Slightly faffy cleanup to deal the various cases where things could have stopped
+            # at various points in the process
 
-    def handle_client_post_tls(ssl_client_sock):
+            if upstream_sock_ssl is not None:
+                upstream_sock = upstream_sock_ssl.unwrap()
+
+            if upstream_sock is not None:
+                try:
+                    upstream_sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    # Could have shutdown already
+                    pass
+                finally:
+                    upstream_sock.close()
+
+            if downstream_sock_ssl is not None:
+                downstream_sock = downstream_sock_ssl.unwrap()
+
+            try:
+                downstream_sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                # Could have shutdown already
+                pass
+            finally:
+                downstream_sock.close()
+
+    def downstream_convert_to_ssl(downstream_sock):
+        chunk = recv_exactly(downstream_sock, len(TLS_REQUEST))
+        if chunk != TLS_REQUEST:
+            downstream_sock.sendall(MESSAGE_HEADER.pack(b'E', 4 + 1) + b'\x00')
+            raise ProtocolError()
+        downstream_sock.sendall(TLS_RESPONSE)
+        downstream_sock_ssl = ssl_context_downstream.wrap_socket(downstream_sock, server_side=True)
+        return downstream_sock_ssl
+
+    def downstream_startup(downstream_sock_ssl):
         startup_message_len, protocol_version = STARTUP_MESSAGE_HEADER.unpack(
-            recv_exactly(ssl_client_sock, STARTUP_MESSAGE_HEADER.size))
+            recv_exactly(downstream_sock_ssl, STARTUP_MESSAGE_HEADER.size))
         if startup_message_len > MAX_IN_MEMORY_MESSAGE_LENGTH:
             raise ProtocolError('Startup message too large')
 
         if protocol_version != 196608:
-            ssl_client_sock.sendall(MESSAGE_HEADER.pack(b'E', 4 + 1) + b'\x00')
-            return
+            downstream_sock_ssl.sendall(MESSAGE_HEADER.pack(b'E', 4 + 1) + b'\x00')
+            raise ProtocolError('Unsupported downstream protocol version')
 
         startup_key_value_pairs = recv_exactly(
-            ssl_client_sock, startup_message_len - STARTUP_MESSAGE_HEADER.size)
+            downstream_sock_ssl, startup_message_len - STARTUP_MESSAGE_HEADER.size)
+
         pairs = dict(re.compile(b'([^\x00]+)\x00([^\x00]*)').findall(startup_key_value_pairs))
-        claimed_user = pairs[b'user']
-        database = pairs[b'database']
 
-        print(claimed_user, database)
+        return pairs[b'user'].decode()
 
-        ssl_client_sock.sendall(MESSAGE_HEADER.pack(b'R', 4 + INT.size)
-                                + INT.pack(AUTHENTICATION_CLEARTEXT_PASSWORD))
+    def downstream_authenticate(downstream_sock_ssl, claimed_user):
+        # Request password
+        downstream_sock_ssl.sendall(MESSAGE_HEADER.pack(b'R', 4 + INT.size)
+                                    + INT.pack(AUTHENTICATION_CLEARTEXT_PASSWORD))
 
-        # Password response
+        # Get password response
         tag, payload_length = MESSAGE_HEADER.unpack(
-            recv_exactly(ssl_client_sock, MESSAGE_HEADER.size))
+            recv_exactly(downstream_sock_ssl, MESSAGE_HEADER.size))
         if payload_length > MAX_IN_MEMORY_MESSAGE_LENGTH:
             raise ProtocolError('Password response message too large')
-
         if tag != PASSWORD_RESPONSE:
             raise ProtocolError('Expected password to request for password')
+        password = (recv_exactly(downstream_sock_ssl, payload_length - 4))[:-1]
 
-        password = (recv_exactly(ssl_client_sock, payload_length - 4))[:-1]
+        # Verify signature
         header_b64, payload_b64, signature_b64 = password.split(b'.')
-
         try:
             # pylint: disable=no-value-for-parameter
             public_key.verify(b64_decode(signature_b64), header_b64 + b'.' + payload_b64)
-        except InvalidSignature:
-            is_valid = False
-        else:
-            is_valid = True
+        except InvalidSignature as exception:
+            raise DownstreamAuthenticationError() from exception
 
-        if not is_valid:
-            failed = \
-                b'S' + b'FATAL\x00' + \
-                b'M' + b'Signature verification failed\x00' + \
-                b'C' + b'28P01\x00' + \
-                b'\x00'
-            ssl_client_sock.sendall(MESSAGE_HEADER.pack(b'E', 4 + len(failed)) + failed)
-            return
+        # Ensure the signed JWT `sub` is the same as the claimed database user
+        payload = json.loads(b64_decode(payload_b64))
+        if claimed_user != payload['sub']:
+            raise DownstreamAuthenticationError()
 
-        ssl_client_sock.sendall(MESSAGE_HEADER.pack(
+        # Tell downstream we are authenticated
+        downstream_sock_ssl.sendall(MESSAGE_HEADER.pack(
             b'R', 4 + INT.size) + INT.pack(AUTHENTICATION_OK))
 
-        header = json.loads(b64_decode(header_b64))
-        payload = json.loads(b64_decode(payload_b64))
+    def downstream_send_auth_error(downstream_sock):
+        failed = \
+            b'S' + b'FATAL\x00' + \
+            b'M' + b'Authentication failed\x00' + \
+            b'C' + b'28P01\x00' + \
+            b'\x00'
+        downstream_sock.sendall(MESSAGE_HEADER.pack(b'E', 4 + len(failed)) + failed)
 
-        print(header, payload)
+    def downstream_send_error(downstream_sock):
+        downstream_sock.sendall(MESSAGE_HEADER.pack(b'E', 4 + 1) + b'\x00')
+
+    def upstream_connect():
+        upstream_sock = socket.create_connection(('127.0.0.1', '5432'))
+        upstream_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        return upstream_sock
+
+    def upstream_convert_to_ssl(upstream_sock):
+        upstream_sock.sendall(TLS_REQUEST)
+        response = recv_exactly(upstream_sock, len(TLS_RESPONSE))
+        if response != TLS_RESPONSE:
+            raise ProtocolError()
+
+        upstream_sock_ssl = upstream_convert_to_ssl(upstream_sock)
+        upstream_sock_ssl = ssl_context_upstream.wrap_socket(downstream_sock, server_side=True)
+        return upstream_sock_ssl
 
     def get_new_socket():
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
@@ -153,9 +215,9 @@ def server():
     sock.listen(socket.IPPROTO_TCP)
 
     while True:
-        client_sock, _ = sock.accept()
-        gevent.spawn(handle_client_pre_tls, client_sock)
-        client_sock = None  # To make sure we don't have it hanging around
+        downstream_sock, _ = sock.accept()
+        gevent.spawn(handle_downstream, downstream_sock)
+        downstream_sock = None  # To make sure we don't have it hanging around
 
 
 def main():
