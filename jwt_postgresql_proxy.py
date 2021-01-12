@@ -40,6 +40,8 @@ def server():
     MESSAGE_HEADER = struct.Struct('!cL')
     INT = struct.Struct('!L')
 
+    PROTOCOL_VERSION = 196608
+
     AUTHENTICATION_CLEARTEXT_PASSWORD = 3
     AUTHENTICATION_OK = 0
     PASSWORD_RESPONSE = b'p'
@@ -68,7 +70,7 @@ def server():
             downstream_sock_ssl = downstream_convert_to_ssl(downstream_sock)
 
             # Startup PostgreSQL downstream
-            user = downstream_startup(downstream_sock_ssl)
+            user, database = downstream_startup(downstream_sock_ssl)
 
             # Authenticate downstream user
             downstream_authenticate(downstream_sock_ssl, user)
@@ -79,6 +81,8 @@ def server():
             # Convert upstream to TLS
             upstream_sock_ssl = upstream_convert_to_ssl(upstream_sock)
 
+            # Startup PostgreSQL upstream
+            upstream_startup(upstream_sock_ssl, user, database)
         except DownstreamAuthenticationError:
             downstream_send_auth_error(downstream_sock_ssl or downstream_sock)
 
@@ -90,7 +94,10 @@ def server():
             # at various points in the process
 
             if upstream_sock_ssl is not None:
-                upstream_sock = upstream_sock_ssl.unwrap()
+                try:
+                    upstream_sock = upstream_sock_ssl.unwrap()
+                except (OSError, ssl.SSLError):
+                    pass
 
             if upstream_sock is not None:
                 try:
@@ -102,7 +109,10 @@ def server():
                     upstream_sock.close()
 
             if downstream_sock_ssl is not None:
-                downstream_sock = downstream_sock_ssl.unwrap()
+                try:
+                    downstream_sock = downstream_sock_ssl.unwrap()
+                except (OSError, ssl.SSLError):
+                    pass
 
             try:
                 downstream_sock.shutdown(socket.SHUT_RDWR)
@@ -127,7 +137,7 @@ def server():
         if startup_message_len > MAX_IN_MEMORY_MESSAGE_LENGTH:
             raise ProtocolError('Startup message too large')
 
-        if protocol_version != 196608:
+        if protocol_version != PROTOCOL_VERSION:
             downstream_sock_ssl.sendall(MESSAGE_HEADER.pack(b'E', 4 + 1) + b'\x00')
             raise ProtocolError('Unsupported downstream protocol version')
 
@@ -136,7 +146,7 @@ def server():
 
         pairs = dict(re.compile(b'([^\x00]+)\x00([^\x00]*)').findall(startup_key_value_pairs))
 
-        return pairs[b'user'].decode()
+        return pairs[b'user'].decode(), pairs[b'database'].decode()
 
     def downstream_authenticate(downstream_sock_ssl, claimed_user):
         # Request password
@@ -191,9 +201,17 @@ def server():
         if response != TLS_RESPONSE:
             raise ProtocolError()
 
-        upstream_sock_ssl = upstream_convert_to_ssl(upstream_sock)
-        upstream_sock_ssl = ssl_context_upstream.wrap_socket(downstream_sock, server_side=True)
+        upstream_sock_ssl = ssl_context_upstream.wrap_socket(upstream_sock)
         return upstream_sock_ssl
+
+    def upstream_startup(upstream_sock_ssl, user, database):
+        pairs = \
+            b'user\x00' + user.encode() + b'\x00' + \
+            b'database\x00' + database.encode() + b'\x00' + \
+            b'\x00'
+        upstream_sock_ssl.sendall(
+            STARTUP_MESSAGE_HEADER.pack(8 + len(pairs), PROTOCOL_VERSION) + pairs
+        )
 
     def get_new_socket():
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
