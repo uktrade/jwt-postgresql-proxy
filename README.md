@@ -2,8 +2,6 @@
 
 Stateless JWT authentication in front of PostgreSQL
 
-> This is a work-in-progress. This README serves as a rough design spec.
-
 
 ## Use case
 
