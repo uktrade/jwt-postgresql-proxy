@@ -27,4 +27,9 @@ setuptools.setup(
     py_modules=[
         'jwt_postgresql_proxy',
     ],
+    entry_points={
+        'console_scripts': [
+            'jwt-postgresql-proxy=jwt_postgresql_proxy:main'
+        ],
+    },
 )
