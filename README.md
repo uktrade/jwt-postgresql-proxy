@@ -98,6 +98,12 @@ Configuration is done via environment variables
 | DOWNSTREAM__CERTFILE | The path to the certificate presented to incoming downstream connections. |
 | DOWNSTREAM__KEYFILE  | The path to the private key used in downstream connections. |
 
+If you wish, the files at `DOWNSTREAM__CERTFILE` and `DOWNSTREAM__KEYFILE` can be self-signed, and generated using the command
+
+```bash
+openssl req -nodes -new -x509 -subj "/CN=my.dbhost.test" -keyout server.key -out server.crt
+```
+
 To start the proxy
 
 ```bash
