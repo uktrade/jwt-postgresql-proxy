@@ -23,8 +23,8 @@ def with_application():
         def test_with_application(self):
             process = subprocess.Popen(
                 ['python3', '-m', 'jwt_postgresql_proxy'],
-                stderr=subprocess.PIPE,
-                stdout=subprocess.PIPE,
+                # stderr=subprocess.PIPE,
+                # stdout=subprocess.PIPE,
                 env={
                     **os.environ,
                     'PUBLIC_KEYS__1': (
@@ -45,8 +45,8 @@ def with_application():
             def stop():
                 process.kill()
                 process.wait(timeout=5)
-                process.stderr.close()
-                process.stdout.close()
+                # process.stderr.close()
+                # process.stdout.close()
 
             def ensure_can_connect_to(port):
                 for i in range(0, 100):
