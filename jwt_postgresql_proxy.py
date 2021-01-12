@@ -2,6 +2,7 @@ from gevent import monkey
 monkey.patch_all()
 
 from base64 import urlsafe_b64decode
+from hashlib import md5
 import re
 import gevent
 import json
@@ -28,7 +29,7 @@ class ProtocolError(Exception):
     pass
 
 
-class DownstreamAuthenticationError(Exception):
+class AuthenticationError(Exception):
     pass
 
 
@@ -43,6 +44,7 @@ def server():
     PROTOCOL_VERSION = 196608
 
     AUTHENTICATION_CLEARTEXT_PASSWORD = 3
+    AUTHENTICATION_MD5_PASSWORD = 5
     AUTHENTICATION_OK = 0
     PASSWORD_RESPONSE = b'p'
 
@@ -83,7 +85,10 @@ def server():
 
             # Startup PostgreSQL upstream
             upstream_startup(upstream_sock_ssl, user, database)
-        except DownstreamAuthenticationError:
+
+            # Authenticate upstream user
+            upstream_authenticate(upstream_sock_ssl, user)
+        except AuthenticationError:
             downstream_send_auth_error(downstream_sock_ssl or downstream_sock)
 
         except ProtocolError:
@@ -168,12 +173,12 @@ def server():
             # pylint: disable=no-value-for-parameter
             public_key.verify(b64_decode(signature_b64), header_b64 + b'.' + payload_b64)
         except InvalidSignature as exception:
-            raise DownstreamAuthenticationError() from exception
+            raise AuthenticationError() from exception
 
         # Ensure the signed JWT `sub` is the same as the claimed database user
         payload = json.loads(b64_decode(payload_b64))
         if claimed_user != payload['sub']:
-            raise DownstreamAuthenticationError()
+            raise AuthenticationError()
 
         # Tell downstream we are authenticated
         downstream_sock_ssl.sendall(MESSAGE_HEADER.pack(
@@ -212,6 +217,37 @@ def server():
         upstream_sock_ssl.sendall(
             STARTUP_MESSAGE_HEADER.pack(8 + len(pairs), PROTOCOL_VERSION) + pairs
         )
+
+    def upstream_authenticate(upstream_sock_ssl, user):
+        tag, message_len = MESSAGE_HEADER.unpack(
+            recv_exactly(upstream_sock_ssl, MESSAGE_HEADER.size))
+        message = recv_exactly(upstream_sock_ssl, message_len - 4)
+        if tag != b'R':
+            raise ProtocolError()
+
+        auth_method, = INT.unpack(message[:4])
+
+        # We only support MD5 password exchange
+        if auth_method != AUTHENTICATION_MD5_PASSWORD:
+            raise ProtocolError()
+
+        salt = message[4:]
+        hashed_password = b'md5' + \
+            md5(md5(b'password' + user.encode()).hexdigest().encode()
+                + salt).hexdigest().encode() + b'\x00'
+
+        upstream_sock_ssl.sendall(MESSAGE_HEADER.pack(
+            PASSWORD_RESPONSE, 4 + len(hashed_password)) + hashed_password)
+
+        tag, message_len = MESSAGE_HEADER.unpack(
+            recv_exactly(upstream_sock_ssl, MESSAGE_HEADER.size))
+        message = recv_exactly(upstream_sock_ssl, message_len - 4)
+
+        if tag != b'R':
+            raise AuthenticationError()
+        auth_result, = INT.unpack(message)
+        if auth_result != AUTHENTICATION_OK:
+            raise AuthenticationError()
 
     def get_new_socket():
         sock = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM,
