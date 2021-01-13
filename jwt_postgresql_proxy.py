@@ -308,7 +308,7 @@ def main():
                 chunks.append(chunk)
                 amount -= len(chunks[-1])
             else:
-                raise Exception()
+                raise ProtocolError()
         joined = b''.join(chunks)
         return joined
 
