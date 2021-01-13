@@ -251,9 +251,12 @@ def main():
         if tag != b'R':
             raise ProtocolError()
 
+        # We only support MD5 password exchange or none
         auth_method, = INT.unpack(message[:4])
 
-        # We only support MD5 password exchange
+        if auth_method == AUTHENTICATION_OK:
+            return
+
         if auth_method != AUTHENTICATION_MD5_PASSWORD:
             raise ProtocolError()
 
